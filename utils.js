@@ -11,19 +11,22 @@ function displayDate(date) {
   return d.toLocaleDateString();
 }
 
-const API_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AUkAhnR5c-lRnwP6rEk9Bhjc2Lj3fEfsMbLkagGPj857rl2RaacvDu4hadcYx-OJXcg7vEA1kBi9IhXfF8QDVtLbusKPV-enHw8ddqtHHyaRONborUXUIfCqME7uFBPd45Uuj31xIWwRKUMFdBrrFCKfKrohb_CAXTmZ1aoOiZ8W2i1QW68F7lp41vW0CgXRw990y7K8ocEBW6eVnGcS0zBB-8zgZqpK3SDfVGvUhrp5pXHpOTKrXt3lyt1yLX7hueqN2u6gDjeuTZJegI3lwxzw8P-IZoCYgNOhd-oiTp6c&lib=MkrbBtvrRdPveIrfjgQHIEtPnlkU-3RBx';
+// ใช้ canonical /exec URL เท่านั้น (อย่าใช้ googleusercontent โดยตรง — key หมดอายุ)
+const API_URL = 'https://script.google.com/macros/s/AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec';
 
 async function fetchRows() {
-  const res = await fetch(API_URL + '&action=getRows');
+  const res = await fetch(API_URL + '?action=getRows');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   return await res.json();
 }
 
 async function addRow(row) {
-  await fetch(API_URL + '&action=addRow', {
+  // อย่า set Content-Type: application/json → จะ trigger CORS preflight (OPTIONS) ที่ GAS ไม่ตอบ
+  // ปล่อย default เป็น text/plain (simple request) — GAS อ่าน e.postData.contents ได้ JSON เหมือนเดิม
+  const res = await fetch(API_URL + '?action=addRow', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
     body: JSON.stringify({ action: 'addRow', ...row })
   });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return await res.json().catch(() => ({}));
 }
