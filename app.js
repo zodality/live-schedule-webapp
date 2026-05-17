@@ -354,28 +354,39 @@ function formatHours(val) {
 function calculateHours(start, end) {
   if (!start || !end) return '-';
 
-  function parseTime(t) {
-    if (t instanceof Date) return t;
-
-    // รองรับ "HH:mm:ss"
-    const parts = String(t).split(':');
-    if (parts.length >= 2) {
-      const d = new Date();
-      d.setHours(+parts[0], +parts[1], +parts[2] || 0, 0);
-      return d;
-    }
-
-    return new Date(t);
-  }
-
   const s = parseTime(start);
   const e = parseTime(end);
 
-  if (isNaN(s) || isNaN(e)) return '-';
+  if (s === null || e === null) return '-';
 
-  let diff = (e - s) / (1000 * 60 * 60);
+  let diff = e - s;
 
+  // กรณีข้ามวัน เช่น 22:00 → 02:00
   if (diff < 0) diff += 24;
 
   return diff % 1 === 0 ? diff : diff.toFixed(1);
+}
+
+  function parseTime(t) {
+  // ถ้าเป็น number (Google Sheets time)
+  if (typeof t === 'number') {
+    return t * 24;
+  }
+
+  // ถ้าเป็น Date object
+  if (t instanceof Date) {
+    return t.getHours() + t.getMinutes() / 60;
+  }
+
+  // ถ้าเป็น string เช่น "18:30:00"
+  if (typeof t === 'string') {
+    const parts = t.split(':');
+    if (parts.length >= 2) {
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      return h + (m || 0) / 60;
+    }
+  }
+
+  return null;
 }
