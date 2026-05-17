@@ -36,7 +36,7 @@ function render(data = rows) {
     html += `
       <tr>
         <td>${row.Tab || ''}</td>
-        <td>${row.Date || ''}</td>
+        <td>${displayDate(row.Date)}</td>
         <td>${row['Start Time'] || ''}</td>
         <td>${row['End Time'] || ''}</td>
         <td>${row.Hours || ''}</td>
