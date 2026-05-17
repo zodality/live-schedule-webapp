@@ -14,6 +14,19 @@ document.addEventListener('DOMContentLoaded', function() {
     render();
   });
 
+   // ✅ เพิ่มตรงนี้
+  flatpickr('#dateFrom', {
+    dateFormat: 'd/m/Y'
+  });
+
+  flatpickr('#dateTo', {
+    dateFormat: 'd/m/Y'
+  });
+
+  flatpickr('#addDate', {
+    dateFormat: 'd/m/Y'
+  });
+  
   loadRows();
 });
 
@@ -32,10 +45,21 @@ function render(data = rows) {
 
   let html = '';
 
+const sourceFilter = document.getElementById('sourceFilter')?.value;
+
+if (sourceFilter && sourceFilter !== 'ALL') {
+  data = data.filter(row => {
+    if (sourceFilter === 'WFH') {
+      return row.source.startsWith('WFH');
+    }
+
+    return row.source === sourceFilter;
+  });
+}
+
   (data || []).forEach(row => {
     html += `
       <tr>
-  <td>${row.Tab || ''}</td>
   <td>${displayDate(row.Date)}</td>
   <td>${displayTime(row['Start Time'])}</td>
   <td>${displayTime(row['End Time'])}</td>
@@ -97,4 +121,15 @@ async function submitAdd() {
   closeAdd();
 
   loadRows();
+}
+
+document.getElementById('clearFilters')
+  .addEventListener('click', clearFilters);
+
+  function clearFilters() {
+  document.getElementById('sourceFilter').value = 'ALL';
+
+  currentPage = 1;
+
+  render(rows);
 }
