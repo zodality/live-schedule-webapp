@@ -7,8 +7,14 @@ function escapeHtml(str) {
 
 function displayDate(date) {
   if (!date) return '';
+
   const d = new Date(date);
-  return d.toLocaleDateString();
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+
+  return `${day}/${month}/${year}`;
 }
 
 // ใช้ canonical /exec URL เท่านั้น (อย่าใช้ googleusercontent โดยตรง — key หมดอายุ)
@@ -43,4 +49,35 @@ function displayTime(time) {
     minute: '2-digit',
     hour12: false
   });
+}
+
+function displayDate(date) {
+  if (!date) return '';
+
+  const d = new Date(date);
+
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+
+  return `${day}/${month}/${year}`;
+}
+
+function displayTime(time) {
+  if (!time) return '';
+
+  const d = new Date(time);
+
+  return d.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+// ✅ เพิ่มตรงนี้
+function parseThaiDate(str) {
+  const [day, month, year] = str.split('/');
+
+  return new Date(year, month - 1, day);
 }

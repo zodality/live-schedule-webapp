@@ -30,6 +30,12 @@ document.addEventListener('DOMContentLoaded', function() {
   flatpickr('#dateTo', { dateFormat: 'd/m/Y' });
   flatpickr('#addDate', { dateFormat: 'd/m/Y' });
 
+document.getElementById('dateFrom')
+  ?.addEventListener('change', resetAndRender);
+
+document.getElementById('dateTo')
+  ?.addEventListener('change', resetAndRender);
+
   loadRows();
 });
 
@@ -49,6 +55,26 @@ function render(data = rows) {
   let html = '';
 
 const sourceFilter = document.getElementById('sourceFilter')?.value;
+const from = document.getElementById('dateFrom')?.value;
+const to = document.getElementById('dateTo')?.value;
+
+if (from) {
+  const fromDate = parseThaiDate(from);
+
+  data = data.filter(row => {
+    return new Date(row.Date) >= fromDate;
+  });
+}
+
+if (to) {
+  const toDate = parseThaiDate(to);
+
+  toDate.setHours(23, 59, 59, 999);
+
+  data = data.filter(row => {
+    return new Date(row.Date) <= toDate;
+  });
+}
 
 if (sourceFilter && sourceFilter !== 'ALL') {
   data = data.filter(row => {
@@ -131,7 +157,16 @@ document.getElementById('clearFilters')
 
   function clearFilters() {
   const sourceFilter = document.getElementById('sourceFilter');
+  const dateFrom = document.getElementById('dateFrom');
+  const dateTo = document.getElementById('dateTo');
+
   if (sourceFilter) sourceFilter.value = 'ALL';
+
+  if (dateFrom) dateFrom.value = '';
+
+  if (dateTo) dateTo.value = '';
+
   currentPage = 1;
+
   render(rows);
 }
