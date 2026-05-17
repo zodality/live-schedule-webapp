@@ -78,21 +78,21 @@ if (to) {
 
 if (sourceFilter && sourceFilter !== 'ALL') {
   data = data.filter(row => {
+    const src = row.source || '';  // guard undefined/null — กัน .startsWith throw
     if (sourceFilter === 'WFH') {
-      return row.source.startsWith('WFH');
+      return src.startsWith('WFH');
     }
 
-    return row.source === sourceFilter;
+    return src === sourceFilter;
   });
 }
 
-// ✅ เพิ่มตรงนี้
+// NaN-safe: Invalid Date → 0 ลำดับจะ stable ไม่เพี้ยนเป็น "data หาย"
 data.sort((a, b) => {
-  const aDate = new Date(a.Date);
-  const bDate = new Date(b.Date);
-
-  const aStart = new Date(a['Start Time']);
-  const bStart = new Date(b['Start Time']);
+  const aDate  = +new Date(a.Date) || 0;
+  const bDate  = +new Date(b.Date) || 0;
+  const aStart = +new Date(a['Start Time']) || 0;
+  const bStart = +new Date(b['Start Time']) || 0;
 
   return (aDate - bDate) || (aStart - bStart);
 });
@@ -163,10 +163,10 @@ async function submitAdd() {
   loadRows();
 }
 
-document.getElementById('clearFilters')
-  .addEventListener('click', clearFilters);
+// (เคย bind clearFilters listener ที่ top-level ตรงนี้ — ลบออก เพราะใน DOMContentLoaded ผูกอยู่แล้ว
+//  การ bind ซ้ำทำให้ render() ถูกเรียก 2 ครั้งต่อการกด Clear filters)
 
-  function clearFilters() {
+function clearFilters() {
   const sourceFilter = document.getElementById('sourceFilter');
   const dateFrom = document.getElementById('dateFrom');
   const dateTo = document.getElementById('dateTo');
