@@ -166,7 +166,7 @@ function render(data = rows) {
         <td>${displayDate(row.Date) || '-'}</td>
         <td>${displayTime(row['Start Time']) || '-'}</td>
         <td>${displayTime(row['End Time']) || '-'}</td>
-        <td>${row.Hours || '-'}</td>
+        <td>${formatHours(row.Hours)}</td>
         <td>${row['ห้องสตู'] || '-'}</td>
         <td>${row['คนไลฟ์'] || '-'}</td>
         <td>${row.BRAND || '-'}</td>
@@ -339,3 +339,15 @@ function clearFilters() {
   render(rows);
   showToast('Filters cleared', 'success');
 }
+
+function formatHours(val) {
+  if (!val && val !== 0) return '-';
+
+  // ถ้าเป็น decimal จาก Google Sheets
+  if (typeof val === 'number') {
+    return (val * 24).toFixed(1); // 0.0833 → 2.0
+  }
+
+  return val;
+}
+
