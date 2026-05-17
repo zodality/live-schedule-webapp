@@ -43,3 +43,36 @@ async function addRow(row) {
     body: JSON.stringify(row)
   });
 }
+
+async function loadRows() {
+  const status = document.getElementById('status');
+  try {
+    const data = await fetchRows();
+    if (!data || data.length === 0) {
+      status.innerText = 'No data';
+      return;
+    }
+    status.style.display = 'none';
+    document.getElementById('tableWrap').style.display = 'block';
+    render(); // เรียก render table
+  } catch (err) {
+    console.error(err);
+    status.innerText = 'Error loading data';
+  }
+}
+
+async function submitAdd() {
+  const row = {
+    date: document.getElementById('addDate').value,
+    start: document.getElementById('addStart').value,
+    end: document.getElementById('addEnd').value,
+    studio: document.getElementById('addStudio').value,
+    streamer: document.getElementById('addStreamer').value,
+    brand: document.getElementById('addBrand').value,
+    platform: document.getElementById('addPlatform').value,
+    source: document.getElementById('sourceFilter').value
+  };
+  await addRow(row);
+  closeAdd();
+  loadRows();
+}
