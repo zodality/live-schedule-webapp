@@ -1,56 +1,34 @@
 // app.js
 document.addEventListener('DOMContentLoaded', function() {
-
-  // Event listeners
   const reloadBtn = document.getElementById('reloadBtn');
-if (reloadBtn) {
-  reloadBtn.addEventListener('click', loadRows);
-}
+  if (reloadBtn) reloadBtn.addEventListener('click', loadRows);
 
-const addBtn = document.getElementById('addBtn');
-if (addBtn) {
-  addBtn.addEventListener('click', openAdd);
-}
+  const addBtn = document.getElementById('addBtn');
+  if (addBtn) addBtn.addEventListener('click', openAdd);
 
-const addCancel = document.getElementById('addCancel');
-if (addCancel) {
-  addCancel.addEventListener('click', closeAdd);
-}
+  const addCancel = document.getElementById('addCancel');
+  if (addCancel) addCancel.addEventListener('click', closeAdd);
 
-const addSave = document.getElementById('addSave');
-if (addSave) {
-  addSave.addEventListener('click', submitAdd);
-}
+  const addSave = document.getElementById('addSave');
+  if (addSave) addSave.addEventListener('click', submitAdd);
 
-const clearBtn = document.getElementById('clearFilters');
-if (clearBtn) {
-  clearBtn.addEventListener('click', clearFilters);
-}
+  const clearBtn = document.getElementById('clearFilters');
+  if (clearBtn) clearBtn.addEventListener('click', clearFilters);
 
-const sourceEl = document.getElementById('sourceFilter');
-if (sourceEl) {
-  sourceEl.addEventListener('change', resetAndRender);
-}
+  const sourceEl = document.getElementById('sourceFilter');
+  if (sourceEl) sourceEl.addEventListener('change', resetAndRender);
 
   const pageSizeEl = document.getElementById('pageSizeSelect');
   if (pageSizeEl) pageSizeEl.addEventListener('change', function(e){
     pageSize = e.target.value === 'all' ? Infinity : parseInt(e.target.value, 10);
     currentPage = 1;
-    render();
+    render(rows);
   });
 
-   // ✅ เพิ่มตรงนี้
-  flatpickr('#dateFrom', {
-    dateFormat: 'd/m/Y'
-  });
-
-  flatpickr('#dateTo', {
-    dateFormat: 'd/m/Y'
-  });
-
-  flatpickr('#addDate', {
-    dateFormat: 'd/m/Y'
-  });
+  // flatpickr
+  flatpickr('#dateFrom', { dateFormat: 'd/m/Y' });
+  flatpickr('#dateTo', { dateFormat: 'd/m/Y' });
+  flatpickr('#addDate', { dateFormat: 'd/m/Y' });
 
   loadRows();
 });
@@ -76,18 +54,6 @@ if (sourceFilter && sourceFilter !== 'ALL') {
   data = data.filter(row => {
     if (sourceFilter === 'WFH') {
       return row.source.startsWith('WFH');
-    }
-
-    return row.source === sourceFilter;
-  });
-}
-
-const sourceFilter = document.getElementById('sourceFilter')?.value;
-
-if (sourceFilter && sourceFilter !== 'ALL') {
-  data = data.filter(row => {
-    if (sourceFilter === 'WFH') {
-      return row.source && row.source.startsWith('WFH');
     }
 
     return row.source === sourceFilter;
@@ -164,19 +130,8 @@ document.getElementById('clearFilters')
   .addEventListener('click', clearFilters);
 
   function clearFilters() {
-  document.getElementById('sourceFilter').value = 'ALL';
-
-  currentPage = 1;
-
-  render(rows);
-}
-
-function clearFilters() {
   const sourceFilter = document.getElementById('sourceFilter');
-
-  if (sourceFilter) {
-    sourceFilter.value = 'ALL';
-  }
-
+  if (sourceFilter) sourceFilter.value = 'ALL';
+  currentPage = 1;
   render(rows);
 }
