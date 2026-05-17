@@ -37,8 +37,8 @@ function render(data = rows) {
       <tr>
         <td>${row.Tab || ''}</td>
         <td>${displayDate(row.Date)}</td>
-        <td>${row['Start Time'] || ''}</td>
-        <td>${row['End Time'] || ''}</td>
+        <td>${displayTime(row['Start Time'])}</td>
+        <td>${displayTime(row['End Time'])}</td>
         <td>${row.Hours || ''}</td>
         <td>${row['ห้องสตู'] || ''}</td>
         <td>${row['คนไลฟ์'] || ''}</td>

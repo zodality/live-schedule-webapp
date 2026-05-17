@@ -32,3 +32,15 @@ async function addRow(row) {
 
   return await res.text();
 }
+
+function displayTime(time) {
+  if (!time) return '';
+
+  const d = new Date(time);
+
+  return d.toLocaleTimeString('th-TH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
