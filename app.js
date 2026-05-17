@@ -7,9 +7,6 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('addCancel').addEventListener('click', closeAdd);
   document.getElementById('addSave').addEventListener('click', submitAdd);
 
-  const sourceEl = document.getElementById('sourceFilter');
-  if (sourceEl) sourceEl.addEventListener('change', resetAndRender);
-
   const pageSizeEl = document.getElementById('pageSizeSelect');
   if (pageSizeEl) pageSizeEl.addEventListener('change', function(e){
     pageSize = e.target.value === 'all' ? Infinity : parseInt(e.target.value, 10);
@@ -22,13 +19,75 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function resetAndRender() {
   currentPage = 1;
-  render();
+  render(rows);
 }
 
-// Placeholder
-function loadRows() { /* fetch from GAS API */ }
-function submitAdd() { /* add row to GAS API */ }
-function render() { /* render table & pagination */ }
+function render(data = rows) {
+  const tableWrap = document.getElementById('tableWrap');
+
+  if (!tableWrap) {
+    console.error('tableWrap not found');
+    return;
+  }
+
+  let html = `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Streamer</th>
+          <th>Brand</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  (data || []).forEach(row => {
+    html += `
+      <tr>
+        <td>${row.Date || ''}</td>
+        <td>${row['Start Time'] || ''}</td>
+        <td>${row['End Time'] || ''}</td>
+        <td>${row['คนไลฟ์'] || ''}</td>
+        <td>${row.BRAND || ''}</td>
+        <td>${row.source || ''}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+      </tbody>
+    </table>
+  `;
+
+  tableWrap.innerHTML = html;
+}
+
+async function loadRows() {
+  const status = document.getElementById('status');
+
+  try {
+    rows = await fetchRows();
+
+    console.log(rows);
+
+    if (!rows || rows.length === 0) {
+      status.innerText = 'No data';
+      return;
+    }
+
+    status.style.display = 'none';
+
+    render(rows);
+
+  } catch (err) {
+    console.error(err);
+    status.innerText = 'Error loading data';
+  }
+}
 
 const API_URL = 'https://script.google.com/macros/s/AKfycbxuhdY_J6N6KPwpG76uDn5or4mnjSNvFPiYaL41d_rWO6ZHQeoEQIdotvurFpX5G7w/exec';
 
@@ -48,31 +107,6 @@ async function addRow(row) {
   });
 }
 
-async function loadRows() {
-  const status = document.getElementById('status');
-  const tableWrap = document.getElementById('tableWrap');
-  if (!status || !tableWrap) return; // safety check
-
-  status.innerText = 'Loading...';
-  tableWrap.style.display = 'none';
-
-  try {
-    const data = await fetchRows();
-
-    if (!data || data.length === 0) {
-      status.innerText = 'No data';
-      return;
-    }
-
-    status.innerText = '';
-    tableWrap.style.display = 'block';
-    render(data); // ส่ง data ให้ render
-  } catch (err) {
-    console.error(err);
-    status.innerText = 'Error loading data';
-  }
-}
-
 async function submitAdd() {
   const row = {
     date: document.getElementById('addDate').value,
@@ -82,9 +116,12 @@ async function submitAdd() {
     streamer: document.getElementById('addStreamer').value,
     brand: document.getElementById('addBrand').value,
     platform: document.getElementById('addPlatform').value,
-    source: document.getElementById('sourceFilter').value
+    source: 'STUDIO'
   };
+
   await addRow(row);
+
   closeAdd();
+
   loadRows();
 }
