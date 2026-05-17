@@ -1,4 +1,3 @@
-// state.js
 let rows = [];
 let filters = { dateFrom: null, dateTo: null, streamers: new Set(), brands: new Set() };
 let pageSize = 50;

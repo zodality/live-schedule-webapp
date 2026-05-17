@@ -21,5 +21,9 @@ async function fetchRows() {
 async function addRow(row) {
   await fetch(API_URL + '?action=addRow', {
     method: 'POST',
-    body: JSON.stringify(row)
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ action: 'addRow', ...row })
   });
+}
