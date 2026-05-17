@@ -95,11 +95,15 @@ table {
   border-collapse: collapse;
 }
 
-th {
+/* Sticky header — header ค้างเมื่อ scroll table ยาว */
+thead th {
+  position: sticky;
+  top: 0;
   background: #f1f3f7;
   font-size: 12px;
   color: #666;
   text-align: left;
+  z-index: 10;
 }
 
 th, td {
@@ -108,6 +112,22 @@ th, td {
 
 td {
   border-bottom: 1px solid #eee;
+}
+
+/* Zebra rows */
+tbody tr:nth-child(even) {
+  background: #fafbfc;
+}
+
+/* Hover row */
+tbody tr:hover {
+  background: #eef5ff;
+}
+
+/* Container scroll สำหรับ sticky header — ถ้า table ยาวมาก scroll ภายใน wrap */
+.table-wrap {
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .badge {
@@ -125,4 +145,135 @@ td {
 .badge-wfh {
   background: #e8f5e9;
   color: #34a853;
+}
+
+/* ===== Modal (เคยขาด — ทำให้ modal เปิดอยู่ตั้งแต่ first load) ===== */
+.modal-bg {
+  display: none;                    /* ซ่อน default — openAdd() จะ set 'flex' เพื่อเปิด */
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  min-width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+.modal h2 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+}
+.field {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field label {
+  font-size: 12px;
+  color: #5f6368;
+}
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.err {
+  color: #d93025;
+  font-size: 13px;
+  min-height: 18px;
+  margin-top: 4px;
+}
+
+/* ===== Toast (เคยขาด — element อยู่แต่ invisible) ===== */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #323232;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 2000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.toast.show {
+  opacity: 1;
+}
+.toast.toast-error {
+  background: #d93025;
+}
+.toast.toast-success {
+  background: #1e8e3e;
+}
+
+/* ===== Pagination layout + emphasis ===== */
+.paginationbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 8px;
+  border-top: 1px solid #eee;
+}
+.pg-info {
+  font-size: 13px;
+  color: #5f6368;
+  font-weight: 500;
+}
+.pg-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pg-nav .btn {
+  background: #fff;
+  border: 1px solid #dadce0;
+  padding: 6px 14px;
+  font-weight: 500;
+  font-size: 13px;
+}
+.pg-nav .btn:hover:not([disabled]) {
+  background: #f1f3f4;
+}
+.pg-nav .btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pg-page {
+  font-weight: 600;
+  color: #1a73e8;
+  background: #e3f2fd;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.pg-size {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #5f6368;
+}
+.status {
+  padding: 12px;
+  color: #5f6368;
+  font-size: 14px;
 }
