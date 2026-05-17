@@ -1,3 +1,4 @@
+// utils.js
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, function(m) {
     return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);
@@ -25,4 +26,4 @@ async function addRow(row) {
     },
     body: JSON.stringify({ action: 'addRow', ...row })
   });
-} // <-- ปิดฟังก์ชันตรงนี้s
+}

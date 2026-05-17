@@ -23,47 +23,34 @@ function resetAndRender() {
 }
 
 function render(data = rows) {
-  const tableWrap = document.getElementById('tableWrap');
+  const tbody = document.getElementById('tbody');
 
-  if (!tableWrap) {
-    console.error('tableWrap not found');
+  if (!tbody) {
+    console.error('tbody not found');
     return;
   }
 
-  let html = `
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Start</th>
-          <th>End</th>
-          <th>Streamer</th>
-          <th>Brand</th>
-          <th>Source</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
+  let html = '';
 
   (data || []).forEach(row => {
     html += `
       <tr>
+        <td>${row.Tab || ''}</td>
         <td>${row.Date || ''}</td>
         <td>${row['Start Time'] || ''}</td>
         <td>${row['End Time'] || ''}</td>
+        <td>${row.Hours || ''}</td>
+        <td>${row['ห้องสตู'] || ''}</td>
         <td>${row['คนไลฟ์'] || ''}</td>
         <td>${row.BRAND || ''}</td>
+        <td>${row.Platform || ''}</td>
         <td>${row.source || ''}</td>
+        <td></td>
       </tr>
     `;
   });
 
-  html += `
-      </tbody>
-    </table>
-  `;
-
-  tableWrap.innerHTML = html;
+  tbody.innerHTML = html;
 }
 
 async function loadRows() {
