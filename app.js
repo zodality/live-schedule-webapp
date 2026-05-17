@@ -35,18 +35,17 @@ function render(data = rows) {
   (data || []).forEach(row => {
     html += `
       <tr>
-        <td>${row.Tab || ''}</td>
-        <td>${displayDate(row.Date)}</td>
-        <td>${displayTime(row['Start Time'])}</td>
-        <td>${displayTime(row['End Time'])}</td>
-        <td>${row.Hours || ''}</td>
-        <td>${row['ห้องสตู'] || ''}</td>
-        <td>${row['คนไลฟ์'] || ''}</td>
-        <td>${row.BRAND || ''}</td>
-        <td>${row.Platform || ''}</td>
-        <td>${row.source || ''}</td>
-        <td></td>
-      </tr>
+  <td>${row.Tab || ''}</td>
+  <td>${displayDate(row.Date)}</td>
+  <td>${displayTime(row['Start Time'])}</td>
+  <td>${displayTime(row['End Time'])}</td>
+  <td>${row.Hours || ''}</td>
+  <td>${row['ห้องสตู'] || ''}</td>
+  <td>${row['คนไลฟ์'] || ''}</td>
+  <td>${row.BRAND || ''}</td>
+  <td>${row.Platform || ''}</td>
+  <td>${renderSourceBadge(row.source || '')}</td>
+</tr>
     `;
   });
 

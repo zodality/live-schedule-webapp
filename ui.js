@@ -13,7 +13,13 @@ function buildActionButtons(k) {
 }
 
 function renderSourceBadge(source) {
-  if (source === 'STUDIO') return '<span class="badge badge-studio">STUDIO</span>';
-  if (source === 'WFH') return '<span class="badge badge-wfh">WFH</span>';
-  return '';
+  if (source === 'STUDIO') {
+    return '<span class="badge badge-studio">STUDIO</span>';
+  }
+
+  if (source && source.startsWith('WFH')) {
+    return '<span class="badge badge-wfh">' + source + '</span>';
+  }
+
+  return source || '';
 }
