@@ -25,4 +25,4 @@ async function addRow(row) {
     },
     body: JSON.stringify({ action: 'addRow', ...row })
   });
-}
+} // <-- ปิดฟังก์ชันตรงนี้s
