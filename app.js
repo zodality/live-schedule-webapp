@@ -86,6 +86,17 @@ if (sourceFilter && sourceFilter !== 'ALL') {
   });
 }
 
+// ✅ เพิ่มตรงนี้
+data.sort((a, b) => {
+  const aDate = new Date(a.Date);
+  const bDate = new Date(b.Date);
+
+  const aStart = new Date(a['Start Time']);
+  const bStart = new Date(b['Start Time']);
+
+  return (aDate - bDate) || (aStart - bStart);
+});
+
   (data || []).forEach(row => {
     html += `
       <tr>
