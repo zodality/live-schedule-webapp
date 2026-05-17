@@ -11,7 +11,7 @@ function displayDate(date) {
   return d.toLocaleDateString();
 }
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec';
+const API_URL = 'https://script.googleusercontent.com/macros/echo?user_content_key=AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec';
 
 async function fetchRows() {
   const res = await fetch(API_URL + '?action=getRows');
