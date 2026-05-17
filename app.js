@@ -34,27 +34,39 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbxuhdY_J6N6KPwpG76uDn5o
 
 async function fetchRows() {
   const res = await fetch(API_URL + '?action=getRows');
+  if (!res.ok) throw new Error('Network error');
   return await res.json();
 }
 
 async function addRow(row) {
   await fetch(API_URL + '?action=addRow', {
     method: 'POST',
-    body: JSON.stringify(row)
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ action: 'addRow', ...row }) // สำคัญต้องมี action
   });
 }
 
 async function loadRows() {
   const status = document.getElementById('status');
+  const tableWrap = document.getElementById('tableWrap');
+  if (!status || !tableWrap) return; // safety check
+
+  status.innerText = 'Loading...';
+  tableWrap.style.display = 'none';
+
   try {
     const data = await fetchRows();
+
     if (!data || data.length === 0) {
       status.innerText = 'No data';
       return;
     }
-    status.style.display = 'none';
-    document.getElementById('tableWrap').style.display = 'block';
-    render(); // เรียก render table
+
+    status.innerText = '';
+    tableWrap.style.display = 'block';
+    render(data); // ส่ง data ให้ render
   } catch (err) {
     console.error(err);
     status.innerText = 'Error loading data';
