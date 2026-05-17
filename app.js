@@ -55,6 +55,7 @@ function render(data = rows) {
 
 async function loadRows() {
   const status = document.getElementById('status');
+  const tableWrap = document.getElementById('tableWrap');
 
   try {
     rows = await fetchRows();
@@ -63,10 +64,14 @@ async function loadRows() {
 
     if (!rows || rows.length === 0) {
       status.innerText = 'No data';
+      tableWrap.style.display = 'none';
       return;
     }
 
     status.style.display = 'none';
+
+    // 🔥 สำคัญมาก
+    tableWrap.style.display = 'block';
 
     render(rows);
 
