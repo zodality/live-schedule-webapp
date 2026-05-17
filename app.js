@@ -166,7 +166,7 @@ function render(data = rows) {
         <td>${displayDate(row.Date) || '-'}</td>
         <td>${displayTime(row['Start Time']) || '-'}</td>
         <td>${displayTime(row['End Time']) || '-'}</td>
-        <td>${formatHours(row.Hours)}</td>
+        <td>${calculateHours(row['Start Time'], row['End Time'])}</td>
         <td>${row['ห้องสตู'] || '-'}</td>
         <td>${row['คนไลฟ์'] || '-'}</td>
         <td>${row.BRAND || '-'}</td>
@@ -351,3 +351,31 @@ function formatHours(val) {
   return val;
 }
 
+function calculateHours(start, end) {
+  if (!start || !end) return '-';
+
+  function parseTime(t) {
+    if (t instanceof Date) return t;
+
+    // รองรับ "HH:mm:ss"
+    const parts = String(t).split(':');
+    if (parts.length >= 2) {
+      const d = new Date();
+      d.setHours(+parts[0], +parts[1], +parts[2] || 0, 0);
+      return d;
+    }
+
+    return new Date(t);
+  }
+
+  const s = parseTime(start);
+  const e = parseTime(end);
+
+  if (isNaN(s) || isNaN(e)) return '-';
+
+  let diff = (e - s) / (1000 * 60 * 60);
+
+  if (diff < 0) diff += 24;
+
+  return diff % 1 === 0 ? diff : diff.toFixed(1);
+}
