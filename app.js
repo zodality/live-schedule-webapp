@@ -213,9 +213,87 @@ function populateFilterOptions(rowsArr) {
   document.getElementById('msStreamer')?._populate?.(streamerList);
 }
 
+// ============================================================
+//  BRAND + AGENT derivation จาก Tab name (สำหรับ WFH ที่ไม่มี column BRAND)
+//
+//  Pipeline ของ "strip rules" — ตัด suffix ที่เป็น metadata (ไม่ใช่ชื่อ brand) ออก
+//  ลำดับ rules: เฉพาะ → กว้าง (rule #1 greedy ที่สุด — ครอบ collab + metadata หลัง)
+//
+//  Patterns ที่รองรับ:
+//    " x TEAM"           "Puricas x JK LIVE"   → BRAND="Puricas"  AGENT=""
+//    " <th-month>.<yr>"  "Hadabirei พ.ค.69"     → BRAND="Hadabirei" AGENT=""
+//    " <en-month> <yr>"  "Brand May2026"        → BRAND="Brand"     AGENT=""
+//    " MM/YY" numeric    "Brand 05/69"          → BRAND="Brand"     AGENT=""
+//    " Q<digit>"         "Brand Q1"             → BRAND="Brand"     AGENT=""
+//    + combined          "Brand x Team พ.ค.69"  → BRAND="Brand"     AGENT=""
+//    Agent prefix        "PP X JK LIVE"         → BRAND=""          AGENT="PP"
+//
+//  Future-proof: เพิ่ม rule ใหม่ = ใส่ regex ใน array / เพิ่ม code ใน AGENT_CODES
+// ============================================================
+
+// Whitelist ของ agent codes ที่รู้จัก (extend ภายหลังได้)
+// Match แบบ case-insensitive (compare via .toUpperCase())
+const AGENT_CODES = new Set([
+  'PP',
+  // เพิ่มได้: 'XX', 'YY', ...
+]);
+
+const BRAND_STRIP_RULES = [
+  // " x <anything>" — collab/team suffix (greedy รับ nested-x case)
+  // ใช้ \b เพื่อกัน match กลางคำ ("xanax", "X-Men" ไม่โดน)
+  /\s+x\b.*$/i,
+
+  // " <Thai month>.<year>" — "พ.ค.69", "ก.พ. 2569"
+  /\s+(?:ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค)\.?\s*\d{2,4}\s*$/,
+
+  // " <English month> <year>" — "May2026", "May 2026", "May'26"
+  // ต้องมี digit ตามหลัง — กัน "May Day Festival" ถูกตัดผิด
+  /\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*['']?\s*\d{2,4}\s*$/i,
+
+  // " <numeric date>" — "05/69", "5-2026", "2026-05"
+  /\s+\d{1,4}[\/\-]\d{1,4}\s*$/,
+
+  // " Q<digit>" — quarter
+  /\s+Q\d+\s*$/i,
+];
+
+// Safeguard trim — handle invisible whitespace + collapse multi-space
+// (NBSP  , ZWSP ​, narrow NBSP   → space → collapse → trim)
+function normalizeSpaces(s) {
+  return String(s ?? '')
+    .replace(/[ ​ ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Parse Tab name → { brand, agent }
+// - ถ้า strip pipeline เหลือชื่อที่อยู่ใน AGENT_CODES → คืนเป็น agent (brand ว่าง)
+// - มิฉะนั้นคืนเป็น brand
+function parseTabBrand(tabName) {
+  if (!tabName) return { brand: '', agent: '' };
+
+  let s = normalizeSpaces(tabName);
+  for (const re of BRAND_STRIP_RULES) {
+    s = normalizeSpaces(s.replace(re, ''));
+  }
+
+  // ตรวจ agent code (case-insensitive) — normalize agent → UPPERCASE
+  // กัน "pp" / "PP" / "Pp" ปะปนใน filter / report
+  if (s && AGENT_CODES.has(s.toUpperCase())) {
+    return { brand: '', agent: s.toUpperCase() };
+  }
+
+  return { brand: s || normalizeSpaces(tabName), agent: '' };
+}
+
+// Backward-compat wrapper (เผื่อมี code อื่นเรียก deriveBrand)
+function deriveBrand(tabName) {
+  return parseTabBrand(tabName).brand;
+}
+
 // 🔹 Normalize row schema — รองรับทั้ง capitalized (Sheet header) และ lowercase (submitAdd payload)
 // ทำครั้งเดียวตอน loadRows() ก่อน assign global rows → render ใช้ canonical keys อย่างเดียว
-// + Derive BRAND สำหรับ WFH (ไม่มี column BRAND ใน Sheet — ชื่อ tab format: "Brand x Team")
+// + Derive BRAND + AGENT สำหรับ WFH (ไม่มี column BRAND ใน Sheet)
 function normalizeRow(r) {
   if (!r || typeof r !== 'object') return {};
   const out = {
@@ -228,16 +306,16 @@ function normalizeRow(r) {
     BRAND:        r.BRAND         ?? r.Brand    ?? r.brand    ?? '',
     Platform:     r.Platform      ?? r.platform ?? '',
     source:       r.source        ?? r.Source   ?? '',
-    Tab:          r.Tab           ?? ''
+    Tab:          r.Tab           ?? '',
+    AGENT:        r.AGENT         ?? r.Agent    ?? r.agent    ?? ''
   };
 
-  // ถ้าไม่มี BRAND และเป็น WFH → derive จาก Tab name
-  // Rule: ตัดทุกอย่างหลัง " x " — "Puricas x JK LIVE" → "Puricas"
-  // (ตั้งใจไม่ทำกับ STUDIO — เพราะ STUDIO ใช้ monthly tab name ที่ไม่เกี่ยวกับ brand)
-  if (!out.BRAND && typeof out.source === 'string' && out.source.startsWith('WFH') && out.Tab) {
-    const tabStr = String(out.Tab).trim();
-    const m = tabStr.match(/^(.+?)\s+x\s+/i);   // จับ "<brand> x ..."
-    out.BRAND = m ? m[1].trim() : tabStr;       // ถ้าไม่ match pattern → ใช้ tab name ทั้งก้อน
+  // ถ้าเป็น WFH + ยังไม่มี BRAND/AGENT → derive จาก Tab name ผ่าน pipeline
+  // (ตั้งใจไม่ทำกับ STUDIO — STUDIO ใช้ monthly tab name ที่ไม่เกี่ยวกับ brand)
+  if (typeof out.source === 'string' && out.source.startsWith('WFH') && out.Tab && (!out.BRAND || !out.AGENT)) {
+    const parsed = parseTabBrand(out.Tab);
+    if (!out.BRAND) out.BRAND = parsed.brand;
+    if (!out.AGENT) out.AGENT = parsed.agent;
   }
 
   return out;
@@ -323,6 +401,14 @@ function render(data = rows) {
   // helper สั้น — escape + fallback "-"
   const cell = v => (v === null || v === undefined || v === '') ? '-' : escapeHtml(String(v));
 
+  // brand cell — แสดง agent fallback ถ้า BRAND ว่างแต่มี AGENT
+  // (agent rows ที่ derive จาก Tab เช่น "PP X JK LIVE" → AGENT="PP")
+  const brandCell = r => {
+    if (r.BRAND) return escapeHtml(String(r.BRAND));
+    if (r.AGENT) return `(agent: ${escapeHtml(String(r.AGENT))})`;
+    return '-';
+  };
+
   pageData.forEach(row => {
     // ไม่ escape: displayDate/displayTime/calculateHours (control output) + renderSourceBadge (สร้าง HTML เอง)
     // escape: text fields ของ user (ห้องสตู/คนไลฟ์/BRAND/Platform) — กัน XSS
@@ -334,7 +420,7 @@ function render(data = rows) {
         <td>${calculateHours(row['Start Time'], row['End Time'])}</td>
         <td>${cell(row['ห้องสตู'])}</td>
         <td>${cell(row['คนไลฟ์'])}</td>
-        <td>${cell(row.BRAND)}</td>
+        <td>${brandCell(row)}</td>
         <td>${cell(row.Platform)}</td>
         <td>${renderSourceBadge(row.source || '') || '-'}</td>
       </tr>
