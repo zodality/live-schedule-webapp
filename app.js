@@ -238,6 +238,54 @@ const AGENT_CODES = new Set([
   // เพิ่มได้: 'XX', 'YY', ...
 ]);
 
+// Blacklist — ถ้า candidate brand มี keyword พวกนี้ = ไม่ใช่ brand จริง (เป็น tab content / platform / asset type)
+// ใช้ substring match แบบ case-insensitive
+// เพิ่ม/ลบได้ตาม convention ที่เจอใน sheet
+const INVALID_BRAND_KEYWORDS = [
+  'บรีฟ',
+  'ช่องหลัก',
+  'ช่องรอง',
+  'มือถือ',
+  'OBS',
+  'Tiktok',
+  'Shopee',
+  'คิว',
+];
+
+function isInvalidBrand(candidate) {
+  if (!candidate) return false;
+  const lower = String(candidate).toLowerCase();
+  return INVALID_BRAND_KEYWORDS.some(k => lower.includes(String(k).toLowerCase()));
+}
+
+// Positive validation — brand จริงต้อง "มีตัวอักษร + ไม่ใช่ pure date/numeric/generic label"
+// ใช้ month constants ร่วมกัน (DRY — ถ้าเพิ่ม month ใน constants, function นี้ update อัตโนมัติ)
+function isLikelyBrand(s) {
+  if (!s) return false;
+  const str = String(s).trim();
+  if (!str) return false;
+
+  // 1. reject pure number — "26", "2026"
+  if (/^\d+$/.test(str)) return false;
+
+  // 2. reject date-like with separator — "05/69", "5-2026"
+  if (/^\d{1,2}[\/\-]\d{2,4}$/.test(str)) return false;
+
+  // 3. reject 4-digit year alone — "2026"
+  if (/^\d{4}$/.test(str)) return false;
+
+  // 4. reject ขึ้นต้นด้วย month name (EN + TH formal + TH informal)
+  //    "March 26", "พ.ค.69", "มีนา'26" — strip rules อาจไม่ตัดถ้า standalone (ไม่มี space ก่อน/หลัง)
+  if (new RegExp('^' + EN_MONTH + '\\b', 'i').test(str)) return false;
+  if (new RegExp('^' + TH_FORMAL_MONTH + '\\b').test(str))  return false;
+  if (new RegExp('^' + TH_INFORMAL_MONTH).test(str))        return false;
+
+  // 5. ต้องมี letter (EN หรือ TH) อย่างน้อย 1 ตัว
+  if (!/[a-zA-Z฀-๿]/.test(str)) return false;
+
+  return true;
+}
+
 // Month name groups — ใช้ร่วมกันทั้ง suffix/prefix rules
 const TH_FORMAL_MONTH   = '(?:ม\\.ค|ก\\.พ|มี\\.ค|เม\\.ย|พ\\.ค|มิ\\.ย|ก\\.ค|ส\\.ค|ก\\.ย|ต\\.ค|พ\\.ย|ธ\\.ค)';
 const TH_INFORMAL_MONTH = '(?:มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิกา|ธันวา)';
@@ -297,8 +345,11 @@ function normalizeSpaces(s) {
 }
 
 // Parse Tab name → { brand, agent }
-// - ถ้า strip pipeline เหลือชื่อที่อยู่ใน AGENT_CODES → คืนเป็น agent (brand ว่าง)
-// - มิฉะนั้นคืนเป็น brand
+// Flow: strip metadata → validate (blacklist) → validate (positive) → agent → brand
+//   1) ถ้า candidate มี INVALID_BRAND_KEYWORDS    → reject (blacklist)
+//   2) ถ้า candidate ไม่ผ่าน isLikelyBrand       → reject (positive validation)
+//   3) ถ้า candidate อยู่ใน AGENT_CODES           → คืนเป็น agent (UPPERCASE)
+//   4) มิฉะนั้น                                   → คืนเป็น brand
 function parseTabBrand(tabName) {
   if (!tabName) return { brand: '', agent: '' };
 
@@ -307,13 +358,23 @@ function parseTabBrand(tabName) {
     s = normalizeSpaces(s.replace(re, ''));
   }
 
-  // ตรวจ agent code (case-insensitive) — normalize agent → UPPERCASE
-  // กัน "pp" / "PP" / "Pp" ปะปนใน filter / report
+  // (1) Blacklist — keyword ที่ไม่ใช่ brand จริง (Tiktok, OBS, บรีฟ, ...)
+  if (isInvalidBrand(s)) {
+    return { brand: '', agent: '' };
+  }
+
+  // (2) Positive validation — ต้อง "ดูเหมือน brand" (มี letter + ไม่ใช่ date/numeric/month-only)
+  if (!isLikelyBrand(s)) {
+    return { brand: '', agent: '' };
+  }
+
+  // (3) Agent code (case-insensitive) — normalize → UPPERCASE
   if (s && AGENT_CODES.has(s.toUpperCase())) {
     return { brand: '', agent: s.toUpperCase() };
   }
 
-  return { brand: s || normalizeSpaces(tabName), agent: '' };
+  // (4) Brand
+  return { brand: s, agent: '' };
 }
 
 // Backward-compat wrapper (เผื่อมี code อื่นเรียก deriveBrand)
@@ -349,6 +410,17 @@ window.testParse = function(tabName) {
       s = after;
     }
   });
+
+  // Validation layer (1) — blacklist
+  if (isInvalidBrand(s)) {
+    const matched = INVALID_BRAND_KEYWORDS.filter(k =>
+      s.toLowerCase().includes(String(k).toLowerCase())
+    );
+    console.log(`  ✗ Rejected by isInvalidBrand — matched: ${JSON.stringify(matched)}`);
+  } else if (!isLikelyBrand(s)) {
+    // Validation layer (2) — positive
+    console.log(`  ✗ Rejected by isLikelyBrand — "${s}" doesn't look like a brand (pure date/numeric/month-only/no-letter)`);
+  }
 
   const parsed = parseTabBrand(tabName);
   console.log('Final parseTabBrand result:', parsed);
