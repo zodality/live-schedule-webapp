@@ -22,15 +22,16 @@ function displayDate(date) {
 const API_URL = '/.netlify/functions/gas';
 
 async function fetchRows() {
-  // Timeout 30s — กัน loading ค้างถาวรถ้า GAS/Netlify Function ตอบช้า
+  // Timeout 60s — เผื่อ cold call (cache miss) ที่ต้อง wait GAS getAllRows() 25-30s
+  // Hit cache ปกติ < 200ms — timeout นี้แค่ safety net สำหรับ cold path
   const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30000);
+  const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
     const res = await fetch(API_URL + '?action=getRows', { signal: ctrl.signal });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
   } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Request timeout (30s)');
+    if (err.name === 'AbortError') throw new Error('Request timeout (60s)');
     throw err;
   } finally {
     clearTimeout(timer);
