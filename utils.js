@@ -22,19 +22,49 @@ function displayDate(date) {
 const API_URL = '/.netlify/functions/gas';
 
 async function fetchRows() {
-  // Timeout 60s — เผื่อ cold call (cache miss) ที่ต้อง wait GAS getAllRows() 25-30s
-  // Hit cache ปกติ < 200ms — timeout นี้แค่ safety net สำหรับ cold path
-  const ctrl  = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 60000);
-  try {
-    const res = await fetch(API_URL + '?action=getRows', { signal: ctrl.signal });
+  // Auto-retry strategy:
+  //   - Netlify อาจ early-return 503 ตอน GAS cold call (>25s) → retry หลัง 20s
+  //   - ระหว่างนั้น GAS finish + populate CacheService → retry hit cache → fast
+  //   - Max 4 attempts → cap total wait ~90s
+  const MAX_ATTEMPTS    = 4;
+  const ATTEMPT_TIMEOUT = 30000;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT);
+    let res;
+    try {
+      res = await fetch(API_URL + '?action=getRows', { signal: ctrl.signal });
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') {
+        if (attempt < MAX_ATTEMPTS) {
+          if (typeof showToast === 'function') {
+            showToast(`Timeout — retry ${attempt + 1}/${MAX_ATTEMPTS}`);
+          }
+          continue;
+        }
+        throw new Error('Request timeout (Netlify Function)');
+      }
+      throw err;
+    }
+    clearTimeout(timer);
+
+    // 503 = Netlify backend computing → wait Retry-After then retry
+    if (res.status === 503) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '20', 10);
+      if (attempt < MAX_ATTEMPTS) {
+        if (typeof showToast === 'function') {
+          showToast(`Backend warming up — retry in ${retryAfter}s (${attempt}/${MAX_ATTEMPTS - 1})`);
+        }
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+      throw new Error(`Backend still computing after ${MAX_ATTEMPTS} attempts — try again in a minute`);
+    }
+
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Request timeout (60s)');
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
