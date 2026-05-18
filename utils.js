@@ -22,22 +22,48 @@ function displayDate(date) {
 const API_URL = '/.netlify/functions/gas';
 
 async function fetchRows() {
-  const res = await fetch(API_URL + '?action=getRows');
-
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-
-  return await res.json();
+  // Timeout 30s — กัน loading ค้างถาวรถ้า GAS/Netlify Function ตอบช้า
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(API_URL + '?action=getRows', { signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Request timeout (30s)');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function addRow(row) {
-  const res = await fetch(API_URL + '?action=addRow', {
-    method: 'POST',
-    body: JSON.stringify({ action: 'addRow', ...row })
-  });
+  // Timeout 30s — เผื่อ GAS lock contention
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(API_URL + '?action=addRow', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'addRow', ...row }),
+      signal: ctrl.signal
+    });
 
-  if (!res.ok) throw new Error('POST failed');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
 
-  return await res.text();
+    // GAS อาจ return { error: '...' } หรือ { success: true } แม้ status = 200
+    const text = await res.text();
+    let json;
+    try { json = JSON.parse(text); } catch { return text; }   // ไม่ใช่ JSON → คืน text เดิม
+
+    if (json && json.error)             throw new Error(json.error);
+    if (json && json.success === false) throw new Error(json.message || 'Save failed');
+    return json;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Request timeout (30s)');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function displayTime(time) {

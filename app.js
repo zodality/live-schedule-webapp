@@ -1,11 +1,14 @@
 // app.js
-document.addEventListener('DOMContentLoaded', function() {
-  console.log('[init] DOMContentLoaded — binding listeners');
+// ============================================================
+//  DEBUG flag — เปิดเป็น true ตอน dev/debug, false ตอน production
+//  ทุก log ที่ "ไม่ใช่ error/warn" ผ่าน dbg() — ปิดได้ใน 1 จุด
+// ============================================================
+const DEBUG = false;
+function dbg(...args) { if (DEBUG) console.log(...args); }
 
+document.addEventListener('DOMContentLoaded', function() {
   const reloadBtn = document.getElementById('reloadBtn');
   if (reloadBtn) reloadBtn.addEventListener('click', () => {
-    console.log('[click] reload');
-    // Loading state — กัน double-click + ให้ user เห็นว่า action กำลังทำงาน
     reloadBtn.disabled = true;
     reloadBtn.innerText = 'Loading...';
     loadRows().finally(() => {
@@ -15,25 +18,16 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   const addBtn = document.getElementById('addBtn');
-  if (addBtn) addBtn.addEventListener('click', () => {
-    console.log('[click] add open');
-    openAdd();
-  });
+  if (addBtn) addBtn.addEventListener('click', openAdd);
 
   const addCancel = document.getElementById('addCancel');
-  if (addCancel) addCancel.addEventListener('click', () => {
-    console.log('[click] add cancel');
-    closeAdd();
-  });
+  if (addCancel) addCancel.addEventListener('click', closeAdd);
 
   const addSave = document.getElementById('addSave');
-  if (addSave) addSave.addEventListener('click', submitAdd);   // logs ของ submitAdd อยู่ภายใน
+  if (addSave) addSave.addEventListener('click', submitAdd);
 
   const clearBtn = document.getElementById('clearFilters');
-  if (clearBtn) clearBtn.addEventListener('click', () => {
-    console.log('[click] clear filters');
-    clearFilters();
-  });
+  if (clearBtn) clearBtn.addEventListener('click', clearFilters);
 
   const sourceEl = document.getElementById('sourceFilter');
   if (sourceEl) sourceEl.addEventListener('change', resetAndRender);
@@ -45,38 +39,64 @@ document.addEventListener('DOMContentLoaded', function() {
     render(rows);
   });
 
-  // 🔹 Pagination Prev/Next — event delegation (เพราะปุ่มถูก re-create ทุกครั้งใน renderPagination)
+  // Pagination Prev/Next — event delegation (ปุ่ม re-create ทุกครั้งใน renderPagination)
   const pgNav = document.getElementById('pgNav');
   if (pgNav) pgNav.addEventListener('click', function(e){
     const t = e.target;
     if (t.classList.contains('pg-prev') && !t.disabled) {
-      console.log('[click] prev page', { from: currentPage, to: currentPage - 1 });
       currentPage = Math.max(1, currentPage - 1);
       render(rows);
     } else if (t.classList.contains('pg-next') && !t.disabled) {
-      console.log('[click] next page', { from: currentPage, to: currentPage + 1 });
       currentPage = currentPage + 1;
       render(rows);
     }
   });
 
-  console.log('[init] listeners bound:',
-    { reload:!!reloadBtn, add:!!addBtn, save:!!addSave, clear:!!clearBtn,
-      source:!!sourceEl, pageSize:!!pageSizeEl, pgNav:!!pgNav });
-
-  // flatpickr
+  // flatpickr — date pickers
   flatpickr('#dateFrom', { dateFormat: 'd/m/Y' });
-  flatpickr('#dateTo', { dateFormat: 'd/m/Y' });
-  flatpickr('#addDate', { dateFormat: 'd/m/Y' });
+  flatpickr('#dateTo',   { dateFormat: 'd/m/Y' });
+  flatpickr('#addDate',  { dateFormat: 'd/m/Y', onChange: updateAddRowState });
 
-document.getElementById('dateFrom')
-  ?.addEventListener('change', resetAndRender);
+  // flatpickr — time pickers สำหรับ Add row (input ใน HTML readonly อยู่แล้ว)
+  const tpOpts = { enableTime: true, noCalendar: true, dateFormat: 'H:i', time_24hr: true, minuteIncrement: 5, onChange: updateAddRowState };
+  flatpickr('#addStart', tpOpts);
+  flatpickr('#addEnd',   tpOpts);
 
-document.getElementById('dateTo')
-  ?.addEventListener('change', resetAndRender);
+  document.getElementById('dateFrom')?.addEventListener('change', resetAndRender);
+  document.getElementById('dateTo')?.addEventListener('change',   resetAndRender);
 
   loadRows();
 });
+
+// ============================================================
+//  Add row — validation + auto-hours
+//  เรียกทุกครั้งที่ date/start/end เปลี่ยน (จาก flatpickr onChange)
+// ============================================================
+function updateAddRowState() {
+  const date  = document.getElementById('addDate').value.trim();
+  const start = document.getElementById('addStart').value.trim();
+  const end   = document.getElementById('addEnd').value.trim();
+  const hoursEl = document.getElementById('addHours');
+  const errEl   = document.getElementById('addErr');
+  const saveBtn = document.getElementById('addSave');
+
+  // auto-calc hours
+  if (start && end) {
+    const h = calculateHours(start, end);
+    if (hoursEl) hoursEl.value = h === '-' ? '' : h;
+  } else {
+    if (hoursEl) hoursEl.value = '';
+  }
+
+  // validate required fields
+  const missing = [];
+  if (!date)  missing.push('Date');
+  if (!start) missing.push('Start');
+  if (!end)   missing.push('End');
+
+  if (errEl) errEl.innerText = missing.length ? 'Required: ' + missing.join(', ') : '';
+  if (saveBtn) saveBtn.disabled = missing.length > 0;
+}
 
 function resetAndRender() {
   currentPage = 1;
@@ -150,7 +170,7 @@ function render(data = rows) {
     return (bDate - aDate) || (bStart - aStart);
   });
 
-  console.log('[render] total:', data.length, 'page:', currentPage, 'size:', pageSize);
+  dbg('[render] total:', data.length, 'page:', currentPage, 'size:', pageSize);
 
   // 🔹 pagination (slice + clamp currentPage กัน overshoot)
   const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(data.length / pageSize));
@@ -159,18 +179,30 @@ function render(data = rows) {
   const end = pageSize === Infinity ? data.length : start + pageSize;
   const pageData = data.slice(start, end);
 
+  // Empty filter state — แยก "data ไม่มี" จาก "filter ตัดออกหมด"
+  // (rows.length > 0 หมายถึงมี data จริง แต่หลัง filter เหลือ 0)
+  if (pageData.length === 0 && Array.isArray(rows) && rows.length > 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:24px">No rows match current filters</td></tr>';
+    renderPagination(0, 1);
+    return;
+  }
+
+  // helper สั้น — escape + fallback "-"
+  const cell = v => (v === null || v === undefined || v === '') ? '-' : escapeHtml(String(v));
+
   pageData.forEach(row => {
-    // empty fallback "-" — แยกแยะ "data ว่างจริง" จาก "render เสีย" ในสายตา user
+    // ไม่ escape: displayDate/displayTime/calculateHours (control output) + renderSourceBadge (สร้าง HTML เอง)
+    // escape: text fields ของ user (ห้องสตู/คนไลฟ์/BRAND/Platform) — กัน XSS
     html += `
       <tr>
         <td>${displayDate(row.Date) || '-'}</td>
         <td>${displayTime(row['Start Time']) || '-'}</td>
         <td>${displayTime(row['End Time']) || '-'}</td>
         <td>${calculateHours(row['Start Time'], row['End Time'])}</td>
-        <td>${row['ห้องสตู'] || '-'}</td>
-        <td>${row['คนไลฟ์'] || '-'}</td>
-        <td>${row.BRAND || '-'}</td>
-        <td>${row.Platform || '-'}</td>
+        <td>${cell(row['ห้องสตู'])}</td>
+        <td>${cell(row['คนไลฟ์'])}</td>
+        <td>${cell(row.BRAND)}</td>
+        <td>${cell(row.Platform)}</td>
         <td>${renderSourceBadge(row.source || '') || '-'}</td>
       </tr>
     `;
@@ -210,23 +242,27 @@ async function loadRows() {
   const status = document.getElementById('status');
   const tableWrap = document.getElementById('tableWrap');
 
-  console.log('[loadRows] start');
+  dbg('[loadRows] start');
 
   try {
     const raw = await fetchRows();
     rows = Array.isArray(raw) ? raw.map(normalizeRow) : [];
     currentPage = 1;
 
-    // 🔹 Diagnostic: schema sample + ตรวจ silent data drop
-    if (Array.isArray(raw) && raw[0]) {
-      console.log('[loadRows] raw sample keys:', Object.keys(raw[0]));
-      console.log('[loadRows] normalized sample:', rows[0]);
+    // Diagnostic — เฉพาะ DEBUG mode (ปิดใน production)
+    if (DEBUG && Array.isArray(raw) && raw[0]) {
+      dbg('[loadRows] raw sample keys:', Object.keys(raw[0]));
+      dbg('[loadRows] normalized sample:', rows[0]);
       const missingCore = rows.filter(r => !r.Date && !r['Start Time']).length;
       const missingDate = rows.filter(r => !r.Date).length;
-      console.log('[loadRows] integrity:', { total: rows.length, missingDate, missingDateAndStart: missingCore });
+      dbg('[loadRows] integrity:', { total: rows.length, missingDate, missingDateAndStart: missingCore });
     }
 
-    console.log('[loadRows] fetched rows:', rows.length);
+    // Warn (เก็บไว้ — สำคัญ): ถ้ามี row ที่ Date หายเยอะผิดปกติ → เตือน user
+    const missingDate = rows.filter(r => !r.Date).length;
+    if (missingDate > rows.length * 0.1) {
+      console.warn('[loadRows] high missing-Date ratio:', missingDate, '/', rows.length);
+    }
 
     if (!rows || rows.length === 0) {
       status.style.display = '';            // ← unhide เสมอเมื่อมี message (กัน silent)
@@ -251,17 +287,25 @@ async function loadRows() {
 }
 
 async function submitAdd() {
-  console.log('[click] add save');
-
   const saveBtn = document.getElementById('addSave');
   const errEl   = document.getElementById('addErr');
   if (errEl) errEl.innerText = '';
 
   // Defensive: ส่งทั้ง 2 schema (canonical Sheet header + lowercase alias) เผื่อ GAS doPost ใช้ key แบบใดแบบหนึ่ง
-  const _date     = document.getElementById('addDate').value;
-  const _start    = document.getElementById('addStart').value;
-  const _end      = document.getElementById('addEnd').value;
+  const _date     = document.getElementById('addDate').value.trim();
+  const _start    = document.getElementById('addStart').value.trim();
+  const _end      = document.getElementById('addEnd').value.trim();
   const _hours    = document.getElementById('addHours').value;
+
+  // Final validation (safety net เผื่อ user bypass disabled state)
+  const missing = [];
+  if (!_date)  missing.push('Date');
+  if (!_start) missing.push('Start');
+  if (!_end)   missing.push('End');
+  if (missing.length) {
+    if (errEl) errEl.innerText = 'Required: ' + missing.join(', ');
+    return;
+  }
   const _studio   = document.getElementById('addStudio').value;
   const _streamer = document.getElementById('addStreamer').value;
   const _brand    = document.getElementById('addBrand').value;
@@ -289,15 +333,13 @@ async function submitAdd() {
     'platform':    _platform
   };
 
-  // 🔹 Log payload — verify end-to-end ว่า submitAdd ส่ง field ตรงกับ Sheet header
-  console.log('[submitAdd] payload →', row);
+  dbg('[submitAdd] payload →', row);
 
   // กัน double-click + ให้ user เห็นว่า action กำลังทำงาน
   if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = 'Saving...'; }
 
   try {
     await addRow(row);
-    console.log('[submitAdd] success');
     closeAdd();
     showToast('Row saved', 'success');
     await loadRows();
@@ -340,53 +382,64 @@ function clearFilters() {
   showToast('Filters cleared', 'success');
 }
 
-function formatHours(val) {
-  if (!val && val !== 0) return '-';
+// ============================================================
+//  Hours calculation (compute จาก Start/End — ไม่พึ่ง row.Hours จาก backend)
+//  Spec: รองรับ string / Date / number (Sheets serial), ข้ามวัน, format
+// ============================================================
 
-  // ถ้าเป็น decimal จาก Google Sheets
-  if (typeof val === 'number') {
-    return (val * 24).toFixed(1); // 0.0833 → 2.0
-  }
+function parseTime(t) {
+  if (t === '' || t === null || t === undefined) return null;
 
-  return val;
-}
-
-function calculateHours(start, end) {
-  if (!start || !end) return '-';
-
-  const s = parseTime(start);
-  const e = parseTime(end);
-
-  if (s === null || e === null) return '-';
-
-  let diff = e - s;
-
-  // กรณีข้ามวัน เช่น 22:00 → 02:00
-  if (diff < 0) diff += 24;
-
-  return diff % 1 === 0 ? diff : diff.toFixed(1);
-}
-
-  function parseTime(t) {
-  // ถ้าเป็น number (Google Sheets time)
+  // Google Sheets serial number — เก็บเฉพาะส่วน time (modulo 1)
+  // e.g. 0.9375 = 22:30, 2.5 = พรุ่งนี้ 12:00 → เอาแค่ time part
   if (typeof t === 'number') {
-    return t * 24;
+    if (!isFinite(t)) return null;
+    return (t - Math.floor(t)) * 24;
   }
 
-  // ถ้าเป็น Date object
+  // Date object — เผื่อ GAS แปลงเป็น Date มาก่อน JSON
   if (t instanceof Date) {
-    return t.getHours() + t.getMinutes() / 60;
+    if (isNaN(t.getTime())) return null;
+    return t.getHours() + t.getMinutes() / 60 + t.getSeconds() / 3600;
   }
 
-  // ถ้าเป็น string เช่น "18:30:00"
   if (typeof t === 'string') {
-    const parts = t.split(':');
-    if (parts.length >= 2) {
-      const h = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      return h + (m || 0) / 60;
+    const s = t.trim();
+    if (!s) return null;
+
+    // ISO datetime "1899-12-30T22:30:00.000Z" หรือ "2026-05-17T08:00:00"
+    // (GAS ส่งเวลาเป็น Date → JSON.stringify → ISO string)
+    if (s.includes('T') || (s.includes('-') && s.length > 10)) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+      }
+    }
+
+    // "HH:MM" หรือ "HH:MM:SS"
+    const m = s.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+    if (m) {
+      const h   = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      const sec = parseInt(m[3] || '0', 10);
+      if (h >= 0 && h < 48 && min >= 0 && min < 60) {
+        return h + min / 60 + sec / 3600;
+      }
     }
   }
 
   return null;
+}
+
+function calculateHours(start, end) {
+  const s = parseTime(start);
+  const e = parseTime(end);
+  if (s === null || e === null) return '-';
+
+  let diff = e - s;
+  if (diff < 0) diff += 24;            // ข้ามวัน: 22:00 → 02:00 = 4 ชม.
+  if (diff < 0 || diff > 24) return '-';
+
+  // integer → เต็ม "2", decimal → 1 ตำแหน่ง "1.5"
+  return diff % 1 === 0 ? String(diff) : diff.toFixed(1);
 }

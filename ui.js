@@ -1,7 +1,17 @@
 // ui.js
 function openAdd() {
   modalMode = 'add';
+  // Reset fields ทุกครั้งที่เปิด modal — กัน state ค้างจากครั้งก่อน
+  ['addDate','addStart','addEnd','addHours','addStudio','addStreamer','addBrand','addPlatform'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el._flatpickr) el._flatpickr.clear(); else el.value = '';
+  });
+  const errEl = document.getElementById('addErr');
+  if (errEl) errEl.innerText = '';
   document.getElementById('modalBg').style.display = 'flex';
+  // Set initial validation state — Save จะ disabled จนกว่ากรอก date/start/end
+  if (typeof updateAddRowState === 'function') updateAddRowState();
 }
 
 function closeAdd() {
