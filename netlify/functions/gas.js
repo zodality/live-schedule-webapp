@@ -87,6 +87,10 @@ function jsonResponse(statusCode, body, extraHeaders = {}) {
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
+
+      // 🔥 ADD THIS
+      'Cache-Control': 'public, max-age=300', // 5 นาที
+
       ...extraHeaders
     },
     body
@@ -120,7 +124,15 @@ exports.handler = async (event) => {
       cache.expires    = 0;        // invalidate fresh window
       cache.staleUntil = 0;        // invalidate stale window
       console.log('[POST] action=' + action + ' → cache invalidated');
-      return jsonResponse(200, text);
+      return {
+  statusCode: 200,
+  headers: {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store'   // 🔥 IMPORTANT
+  },
+  body: text
+};
     }
 
     // ===========================================================
@@ -133,8 +145,14 @@ exports.handler = async (event) => {
       if (cache.body && now < cache.expires) {
         const ageS = Math.round((CACHE_TTL_MS - (cache.expires - now)) / 1000);
         console.log('[cache] HIT fresh age=' + ageS + 's');
-        return jsonResponse(200, cache.body, { 'X-Cache': 'HIT', 'X-Cache-Age': String(ageS) });
-      }
+        return jsonResponse(
+  200,
+  cache.body,
+  {
+    'X-Cache': 'HIT',
+    'Cache-Control': 'public, max-age=300'
+  }
+);
 
       // (2) Stale cache → return stale + refresh in background (SWR)
       if (cache.body && now < cache.staleUntil) {
