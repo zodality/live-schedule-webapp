@@ -291,6 +291,51 @@ function deriveBrand(tabName) {
   return parseTabBrand(tabName).brand;
 }
 
+// ============================================================
+//  Debug helper — ใช้ใน Console: debugBrand() หรือ debugBrand(10)
+//  ตรวจว่า normalizeRow apply ถูก + GAS ส่ง field อะไรมาบ้าง
+// ============================================================
+window.debugBrand = function(n) {
+  if (typeof n !== 'number') n = 5;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    console.warn('[debugBrand] rows empty — call loadRows() first');
+    return;
+  }
+
+  const wfh = rows.filter(r => r && r.source && String(r.source).startsWith('WFH'));
+  console.log('=== WFH rows analysis ===');
+  console.log('Total WFH rows:', wfh.length);
+
+  console.log('\n[1] Sample (first ' + n + ' WFH rows after normalize):');
+  wfh.slice(0, n).forEach((r, i) => {
+    console.log(`  #${i}`, { Tab: r.Tab, BRAND: r.BRAND, AGENT: r.AGENT, source: r.source });
+  });
+
+  const uniqTabs   = [...new Set(wfh.map(r => r.Tab).filter(Boolean))].sort();
+  const uniqBrands = [...new Set(wfh.map(r => r.BRAND).filter(Boolean))].sort();
+  const uniqAgents = [...new Set(wfh.map(r => r.AGENT).filter(Boolean))].sort();
+
+  console.log('\n[2] Unique values:');
+  console.log('  Tabs   (' + uniqTabs.length + '):',   uniqTabs);
+  console.log('  BRANDs (' + uniqBrands.length + '):', uniqBrands);
+  console.log('  AGENTs (' + uniqAgents.length + '):', uniqAgents);
+
+  console.log('\n[3] Tab → parseTabBrand() result (expected vs actual BRAND):');
+  uniqTabs.forEach(t => {
+    const parsed = parseTabBrand(t);
+    const sample = wfh.find(r => r.Tab === t);
+    const actual = sample ? sample.BRAND : '(no sample)';
+    const match  = parsed.brand === actual ? '✓' : '✗ MISMATCH';
+    console.log(`  "${t}" → parsed=${JSON.stringify(parsed)}  actual.BRAND="${actual}"  ${match}`);
+  });
+
+  console.log('\n[4] Raw keys ตัวอย่าง row แรก (เห็น keys ที่ GAS ส่งมา):');
+  if (wfh[0]) console.log('  ', Object.keys(wfh[0]));
+
+  console.log('\n→ ถ้า BRAND "MISMATCH" = GAS ส่ง BRAND มาเอง → normalizeRow skip derive (เพราะมีค่าอยู่แล้ว)');
+  console.log('→ ดู keys ที่ GAS ส่งมา → ถ้ามี "BRAND"/"Brand"/"brand" = backend column นี้ override derive');
+};
+
 // 🔹 Normalize row schema — รองรับทั้ง capitalized (Sheet header) และ lowercase (submitAdd payload)
 // ทำครั้งเดียวตอน loadRows() ก่อน assign global rows → render ใช้ canonical keys อย่างเดียว
 // + Derive BRAND + AGENT สำหรับ WFH (ไม่มี column BRAND ใน Sheet)
