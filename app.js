@@ -243,6 +243,13 @@ const TH_FORMAL_MONTH   = '(?:ม\\.ค|ก\\.พ|มี\\.ค|เม\\.ย|พ\
 const TH_INFORMAL_MONTH = '(?:มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิกา|ธันวา)';
 const EN_MONTH          = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
 
+// Separator ระหว่าง <month> กับ <year>:
+//   apostrophe ทุก variant (', ', ', ʼ, ′, `, ´)
+//   + whitespace, dot, dash, slash, underscore
+// ใช้ negative class: ไม่ใช่ word char และไม่ใช่ Thai → cover ทุก separator แบบ generic
+// max 5 chars กัน over-match
+const SEP = '[^\\w\\u0E00-\\u0E7F]{0,5}';
+
 const BRAND_STRIP_RULES = [
   // ============ SUFFIX rules (anchor $) ============
 
@@ -250,15 +257,16 @@ const BRAND_STRIP_RULES = [
   // ใช้ \b กัน match กลางคำ ("xanax", "X-Men" ไม่โดน)
   /\s+x\b.*$/i,
 
-  // " <Thai formal>.<year>" — "พ.ค.69", "ก.พ. 2569"
-  new RegExp('\\s+' + TH_FORMAL_MONTH + '\\.?\\s*\\d{2,4}\\s*$'),
+  // " <Thai formal>.<year>" — "พ.ค.69", "ก.พ. 2569", "พ.ค. 69"
+  new RegExp('\\s+' + TH_FORMAL_MONTH + SEP + '\\d{2,4}\\s*$'),
 
-  // " <Thai informal>'<year>" — "มีนา'26", "เมษา 26"
-  new RegExp('\\s+' + TH_INFORMAL_MONTH + '\\s*[\'‘’]?\\s*\\d{2,4}\\s*$'),
+  // " <Thai informal><sep><year>" — "มีนา'26", "เมษา'26", "มีนา 26", "มีนา-26"
+  // SEP รองรับ apostrophe ทุก variant + whitespace/punctuation
+  new RegExp('\\s+' + TH_INFORMAL_MONTH + SEP + '\\d{2,4}\\s*$'),
 
-  // " <English month> <year>" — "May2026", "May'26", "May 2026"
-  // ต้องมี digit — กัน "May Day Festival" โดนตัดผิด
-  new RegExp('\\s+' + EN_MONTH + '[a-z]*\\s*[\'‘’]?\\s*\\d{2,4}\\s*$', 'i'),
+  // " <English month><sep><year>" — "May2026", "May'26", "May 2026"
+  // ต้องมี digit — กัน "May Day Festival" โดนตัดผิด ([a-z]* รับ "May", "May" + lowercase อื่น)
+  new RegExp('\\s+' + EN_MONTH + '[a-z]*' + SEP + '\\d{2,4}\\s*$', 'i'),
 
   // " <numeric date>" — "05/69", "5-2026", "2026-05"
   /\s+\d{1,4}[\/\-]\d{1,4}\s*$/,
@@ -267,16 +275,16 @@ const BRAND_STRIP_RULES = [
   /\s+Q\d+\s*$/i,
 
   // ============ PREFIX rules (anchor ^) ============
-  // "<month> <year> <brand>" — month/year นำหน้า, ต้องมี content (\s+) ตามหลัง
+  // "<month><sep><year> <brand>" — ต้องมี \s+ ตามหลัง (มี brand content)
 
-  // "<English month> <year> <brand>" — "May'26 Tiktok ช่องหลัก"
-  new RegExp('^' + EN_MONTH + '[a-z]*\\s*[\'‘’]?\\s*\\d{2,4}\\s+', 'i'),
+  // "<English month><sep><year> <brand>" — "May'26 Tiktok ช่องหลัก"
+  new RegExp('^' + EN_MONTH + '[a-z]*' + SEP + '\\d{2,4}\\s+', 'i'),
 
-  // "<Thai formal>.<year> <brand>" — "พ.ค.69 Brand"
-  new RegExp('^' + TH_FORMAL_MONTH + '\\.?\\s*\\d{2,4}\\s+'),
+  // "<Thai formal><sep><year> <brand>" — "พ.ค.69 Brand"
+  new RegExp('^' + TH_FORMAL_MONTH + SEP + '\\d{2,4}\\s+'),
 
-  // "<Thai informal>'<year> <brand>" — "มีนา'26 Brand"
-  new RegExp('^' + TH_INFORMAL_MONTH + '\\s*[\'‘’]?\\s*\\d{2,4}\\s+'),
+  // "<Thai informal><sep><year> <brand>" — "มีนา'26 Brand"
+  new RegExp('^' + TH_INFORMAL_MONTH + SEP + '\\d{2,4}\\s+'),
 ];
 
 // Safeguard trim — handle invisible whitespace + collapse multi-space
@@ -317,6 +325,36 @@ function deriveBrand(tabName) {
 //  Debug helper — ใช้ใน Console: debugBrand() หรือ debugBrand(10)
 //  ตรวจว่า normalizeRow apply ถูก + GAS ส่ง field อะไรมาบ้าง
 // ============================================================
+// ใช้ใน Console: testParse("Dr.Jill มีนา'26")
+// → เห็น char codes ของแต่ละตัวอักษร + rule ไหน match/ไม่ match
+window.testParse = function(tabName) {
+  console.log('=== testParse ===');
+  console.log('Input:', JSON.stringify(tabName));
+
+  // เปิด char codes — ตรวจ apostrophe variant ที่ใช้จริง
+  const chars = [...String(tabName)].map(c => {
+    const cp = c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+    return `${c}(U+${cp})`;
+  });
+  console.log('Chars:', chars.join(' '));
+
+  let s = normalizeSpaces(tabName);
+  console.log('After normalizeSpaces:', JSON.stringify(s));
+
+  BRAND_STRIP_RULES.forEach((re, i) => {
+    const before = s;
+    const after = normalizeSpaces(before.replace(re, ''));
+    if (after !== before) {
+      console.log(`  ✓ Rule #${i} matched ${re}\n    "${before}" → "${after}"`);
+      s = after;
+    }
+  });
+
+  const parsed = parseTabBrand(tabName);
+  console.log('Final parseTabBrand result:', parsed);
+  return parsed;
+};
+
 window.debugBrand = function(n) {
   if (typeof n !== 'number') n = 5;
   if (!Array.isArray(rows) || rows.length === 0) {
