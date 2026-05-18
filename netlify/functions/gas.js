@@ -139,89 +139,67 @@ exports.handler = async (event) => {
     //  GET getRows — cache-first
     // ===========================================================
     if (action === 'getRows') {
-      const now = Date.now();
+  const now = Date.now();
 
-      // (1) Fresh cache → return immediately (~10ms)
-if (cache.body && now < cache.expires) {
-  const ageS = Math.round((CACHE_TTL_MS - (cache.expires - now)) / 1000);
-  console.log('[cache] HIT fresh age=' + ageS + 's');
-  return jsonResponse(
-    200,
-    cache.body,
-    {
-      'X-Cache': 'HIT',
-      'Cache-Control': 'public, max-age=300'
-    }
-  );
-} // ✅ ปิดตรงนี้!!!
-
-// (2) Stale cache
-if (cache.body && now < cache.staleUntil) {
-
-        // (2) Stale cache → return stale + refresh in background (SWR)
-        if (cache.body && now < cache.staleUntil) {
-          console.log('[cache] STALE — return stale + background refresh');
-          if (!inflight) {
-            inflight = fetchFromGAS(url, { method: 'GET' })
-              .then(text => {
-                cache = { body: text, expires: Date.now() + CACHE_TTL_MS, staleUntil: Date.now() + STALE_TTL_MS };
-                console.log('[cache] refreshed bg, size=' + text.length);
-              })
-              .catch(err => console.warn('[cache] bg refresh failed:', err.message))
-              .finally(() => { inflight = null; });
-          }
-          return jsonResponse(200, cache.body, { 'X-Cache': 'STALE' });
-        }
-
-        // (3) Cache miss + มี inflight อยู่ — coalesce แต่ race timeout
-        // (ถ้า inflight ใช้เวลานานเกิน GAS_WAIT_MS → early-return 503 ให้ client retry)
-        if (inflight) {
-          console.log('[cache] MISS — wait inflight (race ' + GAS_WAIT_MS + 'ms)');
-          try {
-            const text = await raceTimeout(inflight, GAS_WAIT_MS, 'coalesced');
-            return jsonResponse(200, text, { 'X-Cache': 'COALESCED' });
-          } catch (err) {
-            if (err.message.startsWith('partial-timeout')) {
-              console.warn('[cache] inflight >' + GAS_WAIT_MS + 'ms — return 503 retry');
-              return busyResponse(20);
-            }
-            // inflight failed → ตกลง fall through ทำ cold fetch ใหม่
-            console.warn('[cache] inflight failed:', err.message);
-          }
-        }
-
-        // (4) Cold call — fetch (ไม่ await ตรง ๆ) + race กับ GAS_WAIT_MS
-        // ถ้า GAS ตอบทันใน 25s → return data + populate cache
-        // ถ้าเกิน → return 503 + GAS continues on Google server → populate CacheService → next retry hit
-        console.log('[cache] MISS — cold fetch from GAS (race ' + GAS_WAIT_MS + 'ms)');
-        const fetchPromise = fetchFromGAS(url, { method: 'GET' })
-          .then(text => {
-            cache = { body: text, expires: Date.now() + CACHE_TTL_MS, staleUntil: Date.now() + STALE_TTL_MS };
-            console.log('[cache] populated, size=' + text.length);
-            return text;
-          })
-          .catch(err => {
-            console.warn('[cache] cold fetch failed:', err.message);
-            throw err;
-          })
-          .finally(() => { inflight = null; });
-
-        inflight = fetchPromise;
-
-        try {
-          const text = await raceTimeout(fetchPromise, GAS_WAIT_MS, 'cold-fetch');
-          return jsonResponse(200, text, { 'X-Cache': 'MISS' });
-        } catch (err) {
-          if (err.message.startsWith('partial-timeout')) {
-            // GAS ยังทำงานต่อบน Google server (Lambda freeze ไม่ kill GAS request)
-            // → GAS finish → populate CacheService → client retry ใน 20s → hit GAS cache → fast
-            console.warn('[cache] cold fetch >' + GAS_WAIT_MS + 'ms — early-return 503 (GAS continues server-side)');
-            return busyResponse(20);
-          }
-          throw err;
-        }
+  // (1) Fresh cache
+  if (cache.body && now < cache.expires) {
+    const ageS = Math.round((CACHE_TTL_MS - (cache.expires - now)) / 1000);
+    console.log('[cache] HIT fresh age=' + ageS + 's');
+    return jsonResponse(
+      200,
+      cache.body,
+      {
+        'X-Cache': 'HIT',
+        'Cache-Control': 'public, max-age=300'
       }
+    );
+  }
 
+  // (2) Stale cache
+  if (cache.body && now < cache.staleUntil) {
+    console.log('[cache] STALE — return stale + background refresh');
+    if (!inflight) {
+      inflight = fetchFromGAS(url, { method: 'GET' })
+        .then(text => {
+          cache = { body: text, expires: Date.now() + CACHE_TTL_MS, staleUntil: Date.now() + STALE_TTL_MS };
+        })
+        .finally(() => { inflight = null; });
+    }
+    return jsonResponse(200, cache.body, { 'X-Cache': 'STALE' });
+  }
+
+  // (3) inflight
+  if (inflight) {
+    try {
+      const text = await raceTimeout(inflight, GAS_WAIT_MS, 'coalesced');
+      return jsonResponse(200, text, { 'X-Cache': 'COALESCED' });
+    } catch (err) {
+      if (err.message.startsWith('partial-timeout')) {
+        return busyResponse(20);
+      }
+    }
+  }
+
+  // (4) Cold fetch
+  const fetchPromise = fetchFromGAS(url, { method: 'GET' })
+    .then(text => {
+      cache = { body: text, expires: Date.now() + CACHE_TTL_MS, staleUntil: Date.now() + STALE_TTL_MS };
+      return text;
+    })
+    .finally(() => { inflight = null; });
+
+  inflight = fetchPromise;
+
+  try {
+    const text = await raceTimeout(fetchPromise, GAS_WAIT_MS, 'cold-fetch');
+    return jsonResponse(200, text, { 'X-Cache': 'MISS' });
+  } catch (err) {
+    if (err.message.startsWith('partial-timeout')) {
+      return busyResponse(20);
+    }
+    throw err;
+  }
+}
       // ===========================================================
       //  GET อื่น ๆ (ไม่ใช่ getRows) — passthrough ไม่ cache
       // ===========================================================
