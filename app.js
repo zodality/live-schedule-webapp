@@ -238,23 +238,45 @@ const AGENT_CODES = new Set([
   // เพิ่มได้: 'XX', 'YY', ...
 ]);
 
+// Month name groups — ใช้ร่วมกันทั้ง suffix/prefix rules
+const TH_FORMAL_MONTH   = '(?:ม\\.ค|ก\\.พ|มี\\.ค|เม\\.ย|พ\\.ค|มิ\\.ย|ก\\.ค|ส\\.ค|ก\\.ย|ต\\.ค|พ\\.ย|ธ\\.ค)';
+const TH_INFORMAL_MONTH = '(?:มกรา|กุมภา|มีนา|เมษา|พฤษภา|มิถุนา|กรกฎา|สิงหา|กันยา|ตุลา|พฤศจิกา|ธันวา)';
+const EN_MONTH          = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+
 const BRAND_STRIP_RULES = [
+  // ============ SUFFIX rules (anchor $) ============
+
   // " x <anything>" — collab/team suffix (greedy รับ nested-x case)
-  // ใช้ \b เพื่อกัน match กลางคำ ("xanax", "X-Men" ไม่โดน)
+  // ใช้ \b กัน match กลางคำ ("xanax", "X-Men" ไม่โดน)
   /\s+x\b.*$/i,
 
-  // " <Thai month>.<year>" — "พ.ค.69", "ก.พ. 2569"
-  /\s+(?:ม\.ค|ก\.พ|มี\.ค|เม\.ย|พ\.ค|มิ\.ย|ก\.ค|ส\.ค|ก\.ย|ต\.ค|พ\.ย|ธ\.ค)\.?\s*\d{2,4}\s*$/,
+  // " <Thai formal>.<year>" — "พ.ค.69", "ก.พ. 2569"
+  new RegExp('\\s+' + TH_FORMAL_MONTH + '\\.?\\s*\\d{2,4}\\s*$'),
 
-  // " <English month> <year>" — "May2026", "May 2026", "May'26"
-  // ต้องมี digit ตามหลัง — กัน "May Day Festival" ถูกตัดผิด
-  /\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*['']?\s*\d{2,4}\s*$/i,
+  // " <Thai informal>'<year>" — "มีนา'26", "เมษา 26"
+  new RegExp('\\s+' + TH_INFORMAL_MONTH + '\\s*[\'‘’]?\\s*\\d{2,4}\\s*$'),
+
+  // " <English month> <year>" — "May2026", "May'26", "May 2026"
+  // ต้องมี digit — กัน "May Day Festival" โดนตัดผิด
+  new RegExp('\\s+' + EN_MONTH + '[a-z]*\\s*[\'‘’]?\\s*\\d{2,4}\\s*$', 'i'),
 
   // " <numeric date>" — "05/69", "5-2026", "2026-05"
   /\s+\d{1,4}[\/\-]\d{1,4}\s*$/,
 
   // " Q<digit>" — quarter
   /\s+Q\d+\s*$/i,
+
+  // ============ PREFIX rules (anchor ^) ============
+  // "<month> <year> <brand>" — month/year นำหน้า, ต้องมี content (\s+) ตามหลัง
+
+  // "<English month> <year> <brand>" — "May'26 Tiktok ช่องหลัก"
+  new RegExp('^' + EN_MONTH + '[a-z]*\\s*[\'‘’]?\\s*\\d{2,4}\\s+', 'i'),
+
+  // "<Thai formal>.<year> <brand>" — "พ.ค.69 Brand"
+  new RegExp('^' + TH_FORMAL_MONTH + '\\.?\\s*\\d{2,4}\\s+'),
+
+  // "<Thai informal>'<year> <brand>" — "มีนา'26 Brand"
+  new RegExp('^' + TH_INFORMAL_MONTH + '\\s*[\'‘’]?\\s*\\d{2,4}\\s+'),
 ];
 
 // Safeguard trim — handle invisible whitespace + collapse multi-space
@@ -355,11 +377,13 @@ function normalizeRow(r) {
     AGENT:        r.AGENT         ?? r.Agent    ?? r.agent    ?? ''
   };
 
-  // ถ้าเป็น WFH + ยังไม่มี BRAND/AGENT → derive จาก Tab name ผ่าน pipeline
-  // (ตั้งใจไม่ทำกับ STUDIO — STUDIO ใช้ monthly tab name ที่ไม่เกี่ยวกับ brand)
-  if (typeof out.source === 'string' && out.source.startsWith('WFH') && out.Tab && (!out.BRAND || !out.AGENT)) {
+  // ถ้าเป็น WFH → force override BRAND จาก Tab name (Tab = source of truth)
+  // เพราะ GAS อาจส่ง r.BRAND มาเป็นค่า raw tab name → ไม่ใช่ brand ที่ derive แล้ว
+  // (ตั้งใจไม่ทำกับ STUDIO — STUDIO มี BRAND column จริงใน Sheet)
+  // AGENT — preserve ถ้า backend ส่งมา (future-proof) ไม่ override
+  if (typeof out.source === 'string' && out.source.startsWith('WFH') && out.Tab) {
     const parsed = parseTabBrand(out.Tab);
-    if (!out.BRAND) out.BRAND = parsed.brand;
+    out.BRAND = parsed.brand;                       // ← FORCE override
     if (!out.AGENT) out.AGENT = parsed.agent;
   }
 
