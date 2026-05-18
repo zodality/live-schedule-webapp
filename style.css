@@ -277,3 +277,66 @@ tbody tr:hover {
   color: #5f6368;
   font-size: 14px;
 }
+
+/* ===== Multi-select dropdown (BRAND, คนไลฟ์) ===== */
+.ms {
+  position: relative;
+}
+.ms-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ms-panel {
+  display: none;                            /* default ซ่อน — toggle ด้วย .show */
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 8px;
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 100;
+}
+.ms-panel.show {
+  display: block;
+}
+.ms-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.ms-actions {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 6px;
+}
+.ms-list label {
+  user-select: none;
+  font-size: 13px;
+  display: block;
+}
+.ms-list label:hover {
+  background: #f1f3f4;
+}
+.ms-count {
+  background: #1a73e8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  margin-right: 4px;
+}
+.caret {
+  font-size: 10px;
+  color: #5f6368;
+}

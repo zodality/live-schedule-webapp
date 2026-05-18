@@ -65,6 +65,10 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('dateFrom')?.addEventListener('change', resetAndRender);
   document.getElementById('dateTo')?.addEventListener('change',   resetAndRender);
 
+  // Multi-select dropdowns (BRAND + คนไลฟ์) — bind listeners; options จะ populate ใน loadRows()
+  setupMultiSelect('msBrand',    filters.brands);
+  setupMultiSelect('msStreamer', filters.streamers);
+
   loadRows();
 });
 
@@ -103,11 +107,118 @@ function resetAndRender() {
   render(rows);
 }
 
+// ============================================================
+//  Multi-select dropdown — wire HTML structure ที่มีอยู่ (#msBrand, #msStreamer)
+//  เก็บ state ใน filters.brands / filters.streamers (Set จาก state.js)
+// ============================================================
+function setupMultiSelect(containerId, selectedSet) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const btn     = container.querySelector('.ms-btn');
+  const panel   = container.querySelector('.ms-panel');
+  const search  = container.querySelector('.ms-search');
+  const list    = container.querySelector('.ms-list');
+  const allBtn  = container.querySelector('.ms-all');
+  const noneBtn = container.querySelector('.ms-none');
+  const count   = container.querySelector('.ms-count');
+  if (!btn || !panel || !list) return;
+
+  // Toggle panel
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    panel.classList.toggle('show');
+  });
+  // Close panel เมื่อคลิกข้างนอก
+  document.addEventListener('click', e => {
+    if (!container.contains(e.target)) panel.classList.remove('show');
+  });
+  // กัน click ใน panel ปิดตัวเอง
+  panel.addEventListener('click', e => e.stopPropagation());
+
+  // Search filter (client-side filter ของ checkbox list)
+  if (search) {
+    search.addEventListener('input', () => {
+      const q = search.value.toLowerCase();
+      list.querySelectorAll('label').forEach(lb => {
+        lb.style.display = lb.dataset.value.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+
+  // Checkbox change → update set + re-render
+  list.addEventListener('change', e => {
+    if (e.target.type !== 'checkbox') return;
+    if (e.target.checked) selectedSet.add(e.target.value);
+    else                  selectedSet.delete(e.target.value);
+    updateCount();
+    currentPage = 1;
+    render(rows);
+  });
+
+  // All / None
+  if (allBtn) allBtn.addEventListener('click', () => {
+    list.querySelectorAll('input[type=checkbox]').forEach(c => {
+      if (c.parentElement.style.display === 'none') return;  // เลือกแค่ visible (หลัง search)
+      c.checked = true;
+      selectedSet.add(c.value);
+    });
+    updateCount();
+    currentPage = 1;
+    render(rows);
+  });
+  if (noneBtn) noneBtn.addEventListener('click', () => {
+    list.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = false; });
+    selectedSet.clear();
+    updateCount();
+    currentPage = 1;
+    render(rows);
+  });
+
+  function updateCount() {
+    if (!count) return;
+    if (selectedSet.size === 0) {
+      count.style.display = 'none';
+    } else {
+      count.style.display = '';
+      count.innerText = selectedSet.size;
+    }
+  }
+
+  // expose: populate options + refresh checkbox state จาก selectedSet
+  container._populate = function(values) {
+    list.innerHTML = values.map(v => {
+      const safe = escapeHtml(v);
+      const checked = selectedSet.has(v) ? 'checked' : '';
+      return `<label data-value="${safe}" style="display:block;padding:4px 6px;cursor:pointer;border-radius:4px">
+        <input type="checkbox" value="${safe}" ${checked} style="margin-right:6px"> ${safe}
+      </label>`;
+    }).join('');
+    updateCount();
+  };
+}
+
+// Populate options ของ BRAND + คนไลฟ์ จาก unique values ใน rows ปัจจุบัน
+function populateFilterOptions(rowsArr) {
+  const brands    = new Set();
+  const streamers = new Set();
+  rowsArr.forEach(r => {
+    const b = r && r.BRAND        ? String(r.BRAND).trim()       : '';
+    const s = r && r['คนไลฟ์']    ? String(r['คนไลฟ์']).trim()   : '';
+    if (b) brands.add(b);
+    if (s) streamers.add(s);
+  });
+  const brandList    = [...brands].sort((a, b) => a.localeCompare(b, 'th'));
+  const streamerList = [...streamers].sort((a, b) => a.localeCompare(b, 'th'));
+  document.getElementById('msBrand')?._populate?.(brandList);
+  document.getElementById('msStreamer')?._populate?.(streamerList);
+}
+
 // 🔹 Normalize row schema — รองรับทั้ง capitalized (Sheet header) และ lowercase (submitAdd payload)
 // ทำครั้งเดียวตอน loadRows() ก่อน assign global rows → render ใช้ canonical keys อย่างเดียว
+// + Derive BRAND สำหรับ WFH (ไม่มี column BRAND ใน Sheet — ชื่อ tab format: "Brand x Team")
 function normalizeRow(r) {
   if (!r || typeof r !== 'object') return {};
-  return {
+  const out = {
     Date:         r.Date          ?? r.date     ?? '',
     'Start Time': r['Start Time'] ?? r.Start    ?? r.start    ?? '',
     'End Time':   r['End Time']   ?? r.End      ?? r.end      ?? '',
@@ -116,8 +227,20 @@ function normalizeRow(r) {
     'คนไลฟ์':    r['คนไลฟ์']     ?? r.Streamer ?? r.streamer ?? '',
     BRAND:        r.BRAND         ?? r.Brand    ?? r.brand    ?? '',
     Platform:     r.Platform      ?? r.platform ?? '',
-    source:       r.source        ?? r.Source   ?? ''
+    source:       r.source        ?? r.Source   ?? '',
+    Tab:          r.Tab           ?? ''
   };
+
+  // ถ้าไม่มี BRAND และเป็น WFH → derive จาก Tab name
+  // Rule: ตัดทุกอย่างหลัง " x " — "Puricas x JK LIVE" → "Puricas"
+  // (ตั้งใจไม่ทำกับ STUDIO — เพราะ STUDIO ใช้ monthly tab name ที่ไม่เกี่ยวกับ brand)
+  if (!out.BRAND && typeof out.source === 'string' && out.source.startsWith('WFH') && out.Tab) {
+    const tabStr = String(out.Tab).trim();
+    const m = tabStr.match(/^(.+?)\s+x\s+/i);   // จับ "<brand> x ..."
+    out.BRAND = m ? m[1].trim() : tabStr;       // ถ้าไม่ match pattern → ใช้ tab name ทั้งก้อน
+  }
+
+  return out;
 }
 
 function render(data = rows) {
@@ -142,6 +265,16 @@ function render(data = rows) {
       if (sourceFilter === 'WFH') return src.startsWith('WFH');
       return src === sourceFilter;
     });
+  }
+
+  // 🔹 BRAND filter (multi-select) — ใช้ normalized BRAND เป็น source of truth
+  if (filters.brands && filters.brands.size > 0) {
+    data = data.filter(row => filters.brands.has(String(row.BRAND || '').trim()));
+  }
+
+  // 🔹 คนไลฟ์ filter (multi-select)
+  if (filters.streamers && filters.streamers.size > 0) {
+    data = data.filter(row => filters.streamers.has(String(row['คนไลฟ์'] || '').trim()));
   }
 
   // 🔹 date filter (เติมกลับ — guard parseThaiDate throw)
@@ -274,6 +407,9 @@ async function loadRows() {
     status.style.display = 'none';
     tableWrap.style.display = 'block';
 
+    // Populate filter options จาก rows ปัจจุบัน (unique brands + streamers)
+    populateFilterOptions(rows);
+
     render(rows);
     showToast(`Loaded ${rows.length} rows`, 'success');
 
@@ -375,6 +511,11 @@ function clearFilters() {
   // ใช้ flatpickr API ถ้ามี — กัน internal state ของ picker ไม่ sync กับ input.value
   if (dateFrom) { if (dateFrom._flatpickr) dateFrom._flatpickr.clear(); else dateFrom.value = ''; }
   if (dateTo)   { if (dateTo._flatpickr)   dateTo._flatpickr.clear();   else dateTo.value = ''; }
+
+  // Clear multi-select sets + re-populate (จะ uncheck UI + reset count)
+  filters.brands.clear();
+  filters.streamers.clear();
+  populateFilterOptions(rows);
 
   currentPage = 1;
 
