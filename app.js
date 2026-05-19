@@ -264,6 +264,23 @@ function normalizeCandidate(s) {
   return String(s ?? '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+// Canonical brand map — แก้ duplicate จาก case/format variation
+// key   = normalized form (lowercase ที่ผ่าน normalizeCandidate)
+// value = canonical display form (case ที่จะใช้แสดงใน UI/filter)
+// เพิ่ม mapping ใหม่ภายหลังได้
+const BRAND_CANONICAL = {
+  'dr.jill':   'Dr.Jill',
+  'myu-myu':   'MYU-MYU',
+  'myu-nique': 'Myu-Nique',
+};
+
+// Lookup canonical form — ถ้าไม่มีใน map → ใช้ original
+function canonicalBrand(s) {
+  if (!s) return s;
+  const norm = normalizeCandidate(s);
+  return BRAND_CANONICAL[norm] || s;
+}
+
 // Positive validation — brand จริงต้อง "มีตัวอักษร + ไม่ใช่ pure date/numeric/generic label"
 // ใช้ month constants ร่วมกัน (DRY — ถ้าเพิ่ม month ใน constants, function นี้ update อัตโนมัติ)
 function isLikelyBrand(s) {
@@ -399,8 +416,10 @@ function parseTabBrand(tabName) {
     return { brand: '', agent: norm.toUpperCase() };
   }
 
-  // (4) Brand — preserve original case จาก strip ("Dr.Jill" ไม่ใช่ "dr.jill")
-  return { brand: s, agent: '' };
+  // (4) Brand — canonicalize ผ่าน BRAND_CANONICAL map
+  //     ถ้ามีใน map → ใช้ canonical form (กัน duplicate)
+  //     ถ้าไม่มี → ใช้ original case จาก strip ("Dr.Jill" ไม่ใช่ "dr.jill")
+  return { brand: canonicalBrand(s), agent: '' };
 }
 
 // Backward-compat wrapper (เผื่อมี code อื่นเรียก deriveBrand)
@@ -450,6 +469,11 @@ window.testParse = function(tabName) {
   } else if (!isLikelyBrand(norm)) {
     // Validation layer (2) — positive
     console.log(`  ✗ Rejected by isLikelyBrand — "${norm}" doesn't look like a brand`);
+  }
+
+  // Canonical lookup (เห็นว่า map hit หรือไม่)
+  if (norm && BRAND_CANONICAL[norm]) {
+    console.log(`  ✓ Canonical mapping: "${norm}" → "${BRAND_CANONICAL[norm]}"`);
   }
 
   const parsed = parseTabBrand(tabName);
