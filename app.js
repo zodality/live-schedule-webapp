@@ -72,6 +72,16 @@ document.addEventListener('DOMContentLoaded', function() {
   loadRows();
 });
 
+// ===== BRAND REGISTRY =====
+const BRAND_REGISTRY = {
+  "dr.jill": { id: "dr_jill", name: "Dr.Jill", aliases: ["dr.jill"] },
+  "myu-myu": { id: "myu_myu", name: "MYU-MYU", aliases: [] },
+  "myu-nique": { id: "myu_nique", name: "MYU-NIQUE", aliases: [] },
+  "lecorp": { id: "lecorp", name: "Lecorp", aliases: [] },
+  "teka": { id: "teka", name: "TEKA", aliases: [] },
+  "planb": { id: "planb", name: "PlanB", aliases: [] }
+};
+
 // ============================================================
 //  Add row — validation + auto-hours
 //  เรียกทุกครั้งที่ date/start/end เปลี่ยน (จาก flatpickr onChange)
@@ -283,6 +293,10 @@ const BRAND_CANONICAL = {
 // Lookup canonical form — ถ้าไม่มีใน map → ใช้ original
 function canonicalBrand(s) {
   if (!s) return s;
+
+  const matched = matchBrandFromRegistry(s);
+  if (matched) return matched;
+
   const norm = normalizeCandidate(s);
   return BRAND_CANONICAL[norm] || s;
 }
@@ -592,7 +606,6 @@ function render(data = rows) {
     return;
   }
 
-  // 🔹 Shallow copy — กัน data.sort() mutate global rows array
   data = Array.isArray(data) ? [...data] : [];
 
   let html = '';
@@ -608,34 +621,36 @@ function render(data = rows) {
     });
   }
 
-  // 🔹 BRAND filter (multi-select) — ใช้ normalized BRAND เป็น source of truth
+  // 🔹 BRAND filter
   if (filters.brands && filters.brands.size > 0) {
     data = data.filter(row => filters.brands.has(String(row.BRAND || '').trim()));
   }
 
-  // 🔹 คนไลฟ์ filter (multi-select)
+  // 🔹 streamer filter
   if (filters.streamers && filters.streamers.size > 0) {
     data = data.filter(row => filters.streamers.has(String(row['คนไลฟ์'] || '').trim()));
   }
 
-  // 🔹 date filter (เติมกลับ — guard parseThaiDate throw)
+  // 🔹 date filter
   const fromStr = document.getElementById('dateFrom')?.value;
   const toStr   = document.getElementById('dateTo')?.value;
+
   if (fromStr) {
     try {
       const fromDate = parseThaiDate(fromStr);
       data = data.filter(row => (+new Date(row.Date) || 0) >= +fromDate);
-    } catch (e) { console.warn('dateFrom skip:', e); }
+    } catch {}
   }
+
   if (toStr) {
     try {
       const toDate = parseThaiDate(toStr);
       toDate.setHours(23, 59, 59, 999);
       data = data.filter(row => (+new Date(row.Date) || 0) <= +toDate);
-    } catch (e) { console.warn('dateTo skip:', e); }
+    } catch {}
   }
 
-  // 🔹 sort DESC (วันใหม่อยู่บน — row ที่เพิ่ง add จะอยู่หน้า 1 ทันที)
+  // 🔹 sort
   data.sort((a, b) => {
     const aDate  = +new Date(a.Date) || 0;
     const bDate  = +new Date(b.Date) || 0;
@@ -644,28 +659,30 @@ function render(data = rows) {
     return (bDate - aDate) || (bStart - aStart);
   });
 
-  dbg('[render] total:', data.length, 'page:', currentPage, 'size:', pageSize);
+  // ✅ 🔥 analytics hook (สำคัญ)
+  const filteredRows = [...data];
 
-  // 🔹 pagination (slice + clamp currentPage กัน overshoot)
+  updateDashboard(filteredRows);
+  updateTopBrand(filteredRows);
+  renderBrandRanking(filteredRows);
+
+  // 🔹 pagination
   const totalPages = pageSize === Infinity ? 1 : Math.max(1, Math.ceil(data.length / pageSize));
   if (currentPage > totalPages) currentPage = totalPages;
+
   const start = (currentPage - 1) * pageSize;
-  const end = pageSize === Infinity ? data.length : start + pageSize;
+  const end   = pageSize === Infinity ? data.length : start + pageSize;
+
   const pageData = data.slice(start, end);
 
-  // Empty filter state — แยก "data ไม่มี" จาก "filter ตัดออกหมด"
-  // (rows.length > 0 หมายถึงมี data จริง แต่หลัง filter เหลือ 0)
   if (pageData.length === 0 && Array.isArray(rows) && rows.length > 0) {
     tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:24px">No rows match current filters</td></tr>';
     renderPagination(0, 1);
     return;
   }
 
-  // helper สั้น — escape + fallback "-"
   const cell = v => (v === null || v === undefined || v === '') ? '-' : escapeHtml(String(v));
 
-  // brand cell — แสดง agent fallback ถ้า BRAND ว่างแต่มี AGENT
-  // (agent rows ที่ derive จาก Tab เช่น "PP X JK LIVE" → AGENT="PP")
   const brandCell = r => {
     if (r.BRAND) return escapeHtml(String(r.BRAND));
     if (r.AGENT) return `(agent: ${escapeHtml(String(r.AGENT))})`;
@@ -673,9 +690,6 @@ function render(data = rows) {
   };
 
   pageData.forEach(row => {
-    // ไม่ escape: displayDate/displayTime/calculateHours (control output) + renderSourceBadge (สร้าง HTML เอง)
-    // escape: text fields ของ user (ห้องสตู/คนไลฟ์/BRAND/Platform/source/Tab) — กัน XSS
-    // SOURCE + TAB columns ใหม่ — debug data origin (sheet/tab ที่มา)
     html += `
       <tr>
         <td>${displayDate(row.Date) || '-'}</td>
@@ -695,7 +709,6 @@ function render(data = rows) {
 
   tbody.innerHTML = html;
 
-  // 🔹 pagination UI (info + Prev/Next)
   renderPagination(data.length, totalPages);
 }
 
@@ -935,4 +948,89 @@ function calculateHours(start, end) {
 
   // integer → เต็ม "2", decimal → 1 ตำแหน่ง "1.5"
   return diff % 1 === 0 ? String(diff) : diff.toFixed(1);
+}
+
+function normalizeKey(s) {
+  return String(s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9\u0E00-\u0E7F]/g, '');
+}
+
+function matchBrandFromRegistry(input) {
+  const norm = normalizeKey(input);
+
+  for (const key in BRAND_REGISTRY) {
+    const b = BRAND_REGISTRY[key];
+
+    if (normalizeKey(key) === norm) return b.name;
+
+    for (const alias of b.aliases) {
+      if (normalizeKey(alias) === norm) return b.name;
+    }
+  }
+
+  return null;
+}
+
+function getBrandStats(rows) {
+  const groups = groupBy(rows, r => r.BRAND);
+  
+  return Object.entries(groups).map(([brand, items]) => ({
+    brand,
+    hours: sum(items, 'Hours'),
+    count: items.length
+  })).sort((a, b) => b.hours - a.hours);
+}
+
+function getStreamerStats(rows) {
+  const groups = groupBy(rows, r => r['คนไลฟ์']);
+  
+  return Object.entries(groups).map(([name, items]) => ({
+    name,
+    hours: sum(items, 'Hours'),
+    count: items.length
+  })).sort((a, b) => b.hours - a.hours);
+}
+
+function getSourceStats(rows) {
+  const groups = groupBy(rows, r => r.source);
+  
+  return Object.entries(groups).map(([source, items]) => ({
+    source,
+    hours: sum(items, 'Hours')
+  }));
+}
+
+function updateDashboard(rows) {
+  const total = sum(rows, 'Hours');
+
+  const studio = sum(rows.filter(r => r.source === 'STUDIO'), 'Hours');
+  const wfh    = sum(rows.filter(r => r.source !== 'STUDIO'), 'Hours');
+
+  document.getElementById('totalHours').textContent = total.toFixed(1);
+  document.getElementById('studioHours').textContent = studio.toFixed(1);
+  document.getElementById('wfhHours').textContent = wfh.toFixed(1);
+}
+
+function updateTopBrand(rows) {
+  const stats = getBrandStats(rows);
+  const top = stats[0];
+
+  document.getElementById('topBrand').textContent =
+    top ? `${top.brand} (${top.hours.toFixed(1)}h)` : '-';
+}
+
+function renderBrandRanking(rows) {
+  const stats = getBrandStats(rows).slice(0, 5);
+
+  const html = stats.map(s => `
+    <div style="display:flex; justify-content:space-between; padding:4px 0;">
+      <span>${s.brand}</span>
+      <span>${s.hours.toFixed(1)}h</span>
+    </div>
+  `).join('');
+
+  document.getElementById('brandRanking').innerHTML = html;
 }

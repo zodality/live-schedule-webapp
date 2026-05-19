@@ -117,3 +117,18 @@ function parseThaiDate(str) {
 
   return new Date(year, month - 1, day);
 }
+
+// GROUP BY helper
+function groupBy(arr, keyFn) {
+  return arr.reduce((acc, item) => {
+    const key = keyFn(item) || 'UNKNOWN';
+    acc[key] = acc[key] || [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+}
+
+// SUM helper
+function sum(arr, field) {
+  return arr.reduce((s, x) => s + (Number(x[field]) || 0), 0);
+}
