@@ -656,7 +656,7 @@ function render(data = rows) {
   // Empty filter state — แยก "data ไม่มี" จาก "filter ตัดออกหมด"
   // (rows.length > 0 หมายถึงมี data จริง แต่หลัง filter เหลือ 0)
   if (pageData.length === 0 && Array.isArray(rows) && rows.length > 0) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#888;padding:24px">No rows match current filters</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:24px">No rows match current filters</td></tr>';
     renderPagination(0, 1);
     return;
   }
@@ -674,7 +674,8 @@ function render(data = rows) {
 
   pageData.forEach(row => {
     // ไม่ escape: displayDate/displayTime/calculateHours (control output) + renderSourceBadge (สร้าง HTML เอง)
-    // escape: text fields ของ user (ห้องสตู/คนไลฟ์/BRAND/Platform) — กัน XSS
+    // escape: text fields ของ user (ห้องสตู/คนไลฟ์/BRAND/Platform/source/Tab) — กัน XSS
+    // SOURCE + TAB columns ใหม่ — debug data origin (sheet/tab ที่มา)
     html += `
       <tr>
         <td>${displayDate(row.Date) || '-'}</td>
@@ -686,6 +687,8 @@ function render(data = rows) {
         <td>${brandCell(row)}</td>
         <td>${cell(row.Platform)}</td>
         <td>${renderSourceBadge(row.source || '') || '-'}</td>
+        <td>${cell(row.source)}</td>
+        <td>${cell(row.Tab)}</td>
       </tr>
     `;
   });
