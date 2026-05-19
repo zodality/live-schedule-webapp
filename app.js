@@ -240,22 +240,28 @@ const AGENT_CODES = new Set([
 
 // Blacklist — ถ้า candidate brand มี keyword พวกนี้ = ไม่ใช่ brand จริง (เป็น tab content / platform / asset type)
 // ใช้ substring match แบบ case-insensitive
-// เพิ่ม/ลบได้ตาม convention ที่เจอใน sheet
+// 'ช่อง' (general) ครอบทั้ง 'ช่องหลัก' / 'ช่องรอง' ในตัวเดียว
 const INVALID_BRAND_KEYWORDS = [
-  'บรีฟ',
-  'ช่องหลัก',
-  'ช่องรอง',
+  'แก้ไข',
+  'ช่อง',
   'มือถือ',
   'OBS',
   'Tiktok',
   'Shopee',
   'คิว',
+  'บรีฟ',
 ];
 
 function isInvalidBrand(candidate) {
   if (!candidate) return false;
   const lower = String(candidate).toLowerCase();
   return INVALID_BRAND_KEYWORDS.some(k => lower.includes(String(k).toLowerCase()));
+}
+
+// Normalize candidate ก่อนเข้า validation — lowercase + trim + collapse spaces
+// (กัน case variation + invisible space ปะปน ที่อาจหลุดจาก strip pipeline)
+function normalizeCandidate(s) {
+  return String(s ?? '').toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 // Positive validation — brand จริงต้อง "มีตัวอักษร + ไม่ใช่ pure date/numeric/generic label"
@@ -274,11 +280,30 @@ function isLikelyBrand(s) {
   // 3. reject 4-digit year alone — "2026"
   if (/^\d{4}$/.test(str)) return false;
 
-  // 4. reject ขึ้นต้นด้วย month name (EN + TH formal + TH informal)
-  //    "March 26", "พ.ค.69", "มีนา'26" — strip rules อาจไม่ตัดถ้า standalone (ไม่มี space ก่อน/หลัง)
+  // 4. reject ขึ้นต้นด้วย month name (quick fail — EN/TH formal/TH informal)
+  //    Note: \b ใช้ไม่ได้กับ Thai chars — TH rules ครอบคลุมโดย rule 4b ด้านล่างอีกที
   if (new RegExp('^' + EN_MONTH + '\\b', 'i').test(str)) return false;
   if (new RegExp('^' + TH_FORMAL_MONTH + '\\b').test(str))  return false;
   if (new RegExp('^' + TH_INFORMAL_MONTH).test(str))        return false;
+
+  // 4b. reject "month + ... + year" ทั้ง string (anchor both ends)
+  //     "March 26", "March'26", "พ.ค.69", "เมษา2026" — รวมเคสที่ไม่มี separator
+  if (new RegExp('^' + EN_MONTH + '.*\\d{2,4}$', 'i').test(str))     return false;
+  if (new RegExp('^' + TH_FORMAL_MONTH + '.*\\d{2,4}$').test(str))   return false;
+  if (new RegExp('^' + TH_INFORMAL_MONTH + '.*\\d{2,4}$').test(str)) return false;
+
+  // 4c. reject "<word><4-digit year>" — generic label + year ไม่มี separator
+  //     "performance2026", "campaign2024"
+  if (/^[a-z฀-๿]+\d{4}$/i.test(str)) return false;
+
+  // 4d. reject platform-only name (exact match) — "tiktok", "shopee", "obs"
+  //     กันกรณี string เป็นชื่อ platform เดี่ยว ๆ
+  if (/^(tiktok|shopee|obs)$/i.test(str)) return false;
+
+  // 4e. reject single generic Thai word (2-10 Thai chars, no EN mix)
+  //     "มือถือ", "ช่อง", "แก้ไข", "คิว" — generic word ไม่ใช่ brand name
+  //     ⚠️ อาจ false-positive กับ brand ไทยล้วน ถ้ามี — adjust length cap ได้
+  if (/^[ก-๙]{2,}$/.test(str) && str.length <= 10) return false;
 
   // 5. ต้องมี letter (EN หรือ TH) อย่างน้อย 1 ตัว
   if (!/[a-zA-Z฀-๿]/.test(str)) return false;
@@ -345,11 +370,9 @@ function normalizeSpaces(s) {
 }
 
 // Parse Tab name → { brand, agent }
-// Flow: strip metadata → validate (blacklist) → validate (positive) → agent → brand
-//   1) ถ้า candidate มี INVALID_BRAND_KEYWORDS    → reject (blacklist)
-//   2) ถ้า candidate ไม่ผ่าน isLikelyBrand       → reject (positive validation)
-//   3) ถ้า candidate อยู่ใน AGENT_CODES           → คืนเป็น agent (UPPERCASE)
-//   4) มิฉะนั้น                                   → คืนเป็น brand
+// Flow: strip → normalizeCandidate → blacklist → positive → agent → brand
+//   ทุก validation ใช้ normalized form (lowercase + trim + collapse)
+//   แต่ output brand ใช้ original case จาก strip (preserve "Dr.Jill")
 function parseTabBrand(tabName) {
   if (!tabName) return { brand: '', agent: '' };
 
@@ -358,22 +381,25 @@ function parseTabBrand(tabName) {
     s = normalizeSpaces(s.replace(re, ''));
   }
 
-  // (1) Blacklist — keyword ที่ไม่ใช่ brand จริง (Tiktok, OBS, บรีฟ, ...)
-  if (isInvalidBrand(s)) {
+  // Normalize ก่อน validation — กัน case/whitespace variation ที่อาจหลุดมา
+  const norm = normalizeCandidate(s);
+
+  // (1) Blacklist — ทำ post-strip เสมอ (ครอบคลุม prefix/suffix ที่ strip ไม่ตัด)
+  if (isInvalidBrand(norm)) {
     return { brand: '', agent: '' };
   }
 
-  // (2) Positive validation — ต้อง "ดูเหมือน brand" (มี letter + ไม่ใช่ date/numeric/month-only)
-  if (!isLikelyBrand(s)) {
+  // (2) Positive validation
+  if (!isLikelyBrand(norm)) {
     return { brand: '', agent: '' };
   }
 
-  // (3) Agent code (case-insensitive) — normalize → UPPERCASE
-  if (s && AGENT_CODES.has(s.toUpperCase())) {
-    return { brand: '', agent: s.toUpperCase() };
+  // (3) Agent code (case-insensitive) — output UPPERCASE
+  if (norm && AGENT_CODES.has(norm.toUpperCase())) {
+    return { brand: '', agent: norm.toUpperCase() };
   }
 
-  // (4) Brand
+  // (4) Brand — preserve original case จาก strip ("Dr.Jill" ไม่ใช่ "dr.jill")
   return { brand: s, agent: '' };
 }
 
@@ -411,15 +437,19 @@ window.testParse = function(tabName) {
     }
   });
 
+  // Normalize before validation (เห็น input ที่ validators เห็นจริง)
+  const norm = normalizeCandidate(s);
+  console.log('Normalized candidate:', JSON.stringify(norm));
+
   // Validation layer (1) — blacklist
-  if (isInvalidBrand(s)) {
+  if (isInvalidBrand(norm)) {
     const matched = INVALID_BRAND_KEYWORDS.filter(k =>
-      s.toLowerCase().includes(String(k).toLowerCase())
+      norm.includes(String(k).toLowerCase())
     );
     console.log(`  ✗ Rejected by isInvalidBrand — matched: ${JSON.stringify(matched)}`);
-  } else if (!isLikelyBrand(s)) {
+  } else if (!isLikelyBrand(norm)) {
     // Validation layer (2) — positive
-    console.log(`  ✗ Rejected by isLikelyBrand — "${s}" doesn't look like a brand (pure date/numeric/month-only/no-letter)`);
+    console.log(`  ✗ Rejected by isLikelyBrand — "${norm}" doesn't look like a brand`);
   }
 
   const parsed = parseTabBrand(tabName);
@@ -452,13 +482,30 @@ window.debugBrand = function(n) {
   console.log('  BRANDs (' + uniqBrands.length + '):', uniqBrands);
   console.log('  AGENTs (' + uniqAgents.length + '):', uniqAgents);
 
-  console.log('\n[3] Tab → parseTabBrand() result (expected vs actual BRAND):');
+  console.log('\n[3] Tab → parseTabBrand() result (with reject reason):');
   uniqTabs.forEach(t => {
     const parsed = parseTabBrand(t);
     const sample = wfh.find(r => r.Tab === t);
     const actual = sample ? sample.BRAND : '(no sample)';
     const match  = parsed.brand === actual ? '✓' : '✗ MISMATCH';
-    console.log(`  "${t}" → parsed=${JSON.stringify(parsed)}  actual.BRAND="${actual}"  ${match}`);
+
+    // Compute reject reason ถ้าทั้ง brand+agent ว่าง
+    let reason = '';
+    if (!parsed.brand && !parsed.agent) {
+      let stripped = normalizeSpaces(t);
+      for (const re of BRAND_STRIP_RULES) stripped = normalizeSpaces(stripped.replace(re, ''));
+      const norm = normalizeCandidate(stripped);
+      if (isInvalidBrand(norm)) {
+        const matched = INVALID_BRAND_KEYWORDS.filter(k => norm.includes(String(k).toLowerCase()));
+        reason = ` [blacklist: ${JSON.stringify(matched)}]`;
+      } else if (!isLikelyBrand(norm)) {
+        reason = ` [isLikelyBrand: not brand-like "${norm}"]`;
+      } else {
+        reason = ` [no candidate after strip]`;
+      }
+    }
+
+    console.log(`  "${t}" → ${JSON.stringify(parsed)}  actual="${actual}"  ${match}${reason}`);
   });
 
   console.log('\n[4] Raw keys ตัวอย่าง row แรก (เห็น keys ที่ GAS ส่งมา):');
