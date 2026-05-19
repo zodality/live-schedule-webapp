@@ -118,6 +118,14 @@ function parseThaiDate(str) {
   return new Date(year, month - 1, day);
 }
 
+// Truncate string + ellipsis — สำหรับ TAB cell ที่ยาวเกิน
+function truncate(str, max) {
+  if (max == null) max = 30;
+  if (!str) return '';
+  const s = String(str);
+  return s.length > max ? s.slice(0, max) + '...' : s;
+}
+
 // GROUP BY helper
 function groupBy(arr, keyFn) {
   return arr.reduce((acc, item) => {

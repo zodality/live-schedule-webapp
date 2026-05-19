@@ -52,6 +52,59 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // TAB copy button — event delegation (ปุ่มถูก re-create ทุก render)
+  // data-copy เก็บเป็น encodeURIComponent → ต้อง decodeURIComponent ก่อนใช้
+  const tbodyEl = document.getElementById('tbody');
+  if (tbodyEl) tbodyEl.addEventListener('click', function(e){
+    const btn = e.target.closest('.tab-copy');
+    if (!btn) return;
+    const encoded = btn.getAttribute('data-copy') || '';
+    if (!encoded) return;
+    let value;
+    try {
+      value = decodeURIComponent(encoded);
+    } catch (err) {
+      // malformed URI sequence — fallback ใช้ raw (กัน throw)
+      value = encoded;
+    }
+
+    // Visual feedback — 📋 → ✓ ชั่วคราว 800ms
+    const flashCheck = () => {
+      const original = btn.innerText;
+      btn.innerText = '✓';
+      btn.classList.add('tab-copy-done');
+      setTimeout(() => {
+        btn.innerText = original;
+        btn.classList.remove('tab-copy-done');
+      }, 800);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value)
+        .then(() => {
+          flashCheck();
+          showToast('Copied: ' + truncate(value, 40), 'success');
+        })
+        .catch(err => showToast('Copy failed: ' + err.message, 'error'));
+    } else {
+      // fallback สำหรับ browser ที่ไม่รองรับ clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        flashCheck();
+        showToast('Copied: ' + truncate(value, 40), 'success');
+      } catch (err) {
+        showToast('Copy failed', 'error');
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+  });
+
   // flatpickr — date pickers
   flatpickr('#dateFrom', { dateFormat: 'd/m/Y' });
   flatpickr('#dateTo',   { dateFormat: 'd/m/Y' });
@@ -689,6 +742,22 @@ function render(data = rows) {
     return '-';
   };
 
+  // tab cell — truncate 30 chars + tooltip + copy button
+  // hover เห็นเต็ม, กดปุ่ม 📋 → copy ค่าเต็มลง clipboard + toast feedback
+  // data-copy ใช้ encodeURIComponent → safe สำหรับ HTML attribute ทุก char (รวม quote/newline)
+  const tabCell = v => {
+    if (v === null || v === undefined || v === '') return '-';
+    const full        = String(v);
+    const trunc       = truncate(full, 30);
+    const safeTitle   = escapeHtml(full);                // tooltip — ต้อง escape สำหรับ HTML
+    const safeTrunc   = escapeHtml(trunc);               // visible text — ต้อง escape
+    const encodedCopy = encodeURIComponent(full);        // attr payload — encodeURIComponent ปลอดภัยกว่า
+    return `<span class="tab-cell" title="${safeTitle}">` +
+             `<span class="tab-text">${safeTrunc}</span>` +
+             `<button type="button" class="tab-copy" data-copy="${encodedCopy}" title="Copy">📋</button>` +
+           `</span>`;
+  };
+
   pageData.forEach(row => {
     html += `
       <tr>
@@ -702,7 +771,7 @@ function render(data = rows) {
         <td>${cell(row.Platform)}</td>
         <td>${renderSourceBadge(row.source || '') || '-'}</td>
         <td>${cell(row.source)}</td>
-        <td>${cell(row.Tab)}</td>
+        <td>${tabCell(row.Tab)}</td>
       </tr>
     `;
   });
@@ -1004,14 +1073,14 @@ function getSourceStats(rows) {
 }
 
 function updateDashboard(rows) {
-  const total = sum(rows, 'Hours');
+  // NaN guards — กัน sum() คืน NaN ทำให้ UI โชว์ "NaN"
+  const total  = Number(sum(rows, 'Hours')) || 0;
+  const studio = Number(sum(rows.filter(r => r.source === 'STUDIO'), 'Hours')) || 0;
+  const wfh    = Number(sum(rows.filter(r => r.source !== 'STUDIO'), 'Hours')) || 0;
 
-  const studio = sum(rows.filter(r => r.source === 'STUDIO'), 'Hours');
-  const wfh    = sum(rows.filter(r => r.source !== 'STUDIO'), 'Hours');
-
-  document.getElementById('totalHours').textContent = total.toFixed(1);
+  document.getElementById('totalHours').textContent  = total.toFixed(1);
   document.getElementById('studioHours').textContent = studio.toFixed(1);
-  document.getElementById('wfhHours').textContent = wfh.toFixed(1);
+  document.getElementById('wfhHours').textContent    = wfh.toFixed(1);
 }
 
 function updateTopBrand(rows) {
@@ -1019,7 +1088,7 @@ function updateTopBrand(rows) {
   const top = stats[0];
 
   document.getElementById('topBrand').textContent =
-    top ? `${top.brand} (${top.hours.toFixed(1)}h)` : '-';
+    top ? `${top.brand} (${(Number(top.hours) || 0).toFixed(1)}h)` : '-';
 }
 
 function renderBrandRanking(rows) {
@@ -1028,7 +1097,7 @@ function renderBrandRanking(rows) {
   const html = stats.map(s => `
     <div style="display:flex; justify-content:space-between; padding:4px 0;">
       <span>${s.brand}</span>
-      <span>${s.hours.toFixed(1)}h</span>
+      <span>${(Number(s.hours) || 0).toFixed(1)}h</span>
     </div>
   `).join('');
 

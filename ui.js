@@ -23,13 +23,16 @@ function buildActionButtons(k) {
 }
 
 function renderSourceBadge(source) {
-  if (source === 'STUDIO') {
+  if (!source) return '';
+  const s = String(source);
+  if (s === 'STUDIO') {
     return '<span class="badge badge-studio">STUDIO</span>';
   }
-
-  if (source && source.startsWith('WFH')) {
-    return '<span class="badge badge-wfh">' + source + '</span>';
+  if (s.startsWith('WFH')) {
+    // เฉดสีต่างกันเล็กน้อยตาม WFH_NN (โทนเขียวเหมือนกัน)
+    const num   = parseInt(s.replace(/\D/g, ''), 10) || 0;
+    const shade = num % 5;     // 0-4 → 5 เฉด
+    return `<span class="badge badge-wfh badge-wfh-${shade}">${escapeHtml(s)}</span>`;
   }
-
-  return source || '';
+  return `<span class="badge badge-other">${escapeHtml(s)}</span>`;
 }
