@@ -198,16 +198,22 @@ function setupMultiSelect(containerId, selectedSet) {
 }
 
 // Populate options ของ BRAND + คนไลฟ์ จาก unique values ใน rows ปัจจุบัน
+// BRAND ใช้ Map (key=normalized, value=canonical display) — กัน duplicate จาก case/format
 function populateFilterOptions(rowsArr) {
-  const brands    = new Set();
+  const brandMap  = new Map();   // norm(lowercase) → canonical(display)
   const streamers = new Set();
+
   rowsArr.forEach(r => {
-    const b = r && r.BRAND        ? String(r.BRAND).trim()       : '';
-    const s = r && r['คนไลฟ์']    ? String(r['คนไลฟ์']).trim()   : '';
-    if (b) brands.add(b);
+    if (r && r.BRAND) {
+      const norm    = normalizeCandidate(r.BRAND);   // key สำหรับ dedupe
+      const display = canonicalBrand(r.BRAND);        // display ใน dropdown
+      if (norm && !brandMap.has(norm)) brandMap.set(norm, display);
+    }
+    const s = r && r['คนไลฟ์'] ? String(r['คนไลฟ์']).trim() : '';
     if (s) streamers.add(s);
   });
-  const brandList    = [...brands].sort((a, b) => a.localeCompare(b, 'th'));
+
+  const brandList    = [...brandMap.values()].sort((a, b) => a.localeCompare(b, 'th'));
   const streamerList = [...streamers].sort((a, b) => a.localeCompare(b, 'th'));
   document.getElementById('msBrand')?._populate?.(brandList);
   document.getElementById('msStreamer')?._populate?.(streamerList);
@@ -271,7 +277,7 @@ function normalizeCandidate(s) {
 const BRAND_CANONICAL = {
   'dr.jill':   'Dr.Jill',
   'myu-myu':   'MYU-MYU',
-  'myu-nique': 'Myu-Nique',
+  'myu-nique': 'MYU-NIQUE',
 };
 
 // Lookup canonical form — ถ้าไม่มีใน map → ใช้ original
@@ -566,6 +572,13 @@ function normalizeRow(r) {
     const parsed = parseTabBrand(out.Tab);
     out.BRAND = parsed.brand;                       // ← FORCE override
     if (!out.AGENT) out.AGENT = parsed.agent;
+  }
+
+  // Safety canonical — บังคับ canonical form ทุกครั้งหลัง assign BRAND
+  // ครอบคลุม source ทุกแบบ: WFH (derive), STUDIO (column ตรง), POST payload, future backends
+  // → ทุก row.BRAND ที่ออกจาก normalizeRow รับประกันเป็น canonical form
+  if (out.BRAND) {
+    out.BRAND = canonicalBrand(out.BRAND);
   }
 
   return out;
