@@ -1,19 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="th">
 <head>
+  <meta charset="utf-8">
   <title>Queue Dashboard</title>
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
 
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; color: #202124; }
-    h2 { margin: 0 0 12px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { padding: 8px 10px; text-align: left; }
-    th { background: #f1f3f4; font-size: 12px; color: #5f6368; }
-    tr:nth-child(even) td { background: #fafbfc; }
+    :root {
+      --c-primary:  #1a73e8;
+      --c-error:    #d93025;
+      --c-success:  #137333;
+      --c-warn:     #f9ab00;
+      --c-text:     #202124;
+      --c-muted:    #5f6368;
+      --bg-stripe:  #fafbfc;
+      --bg-hover:   #eef5ff;
+      --bg-conflict:#fce8e6;
+      --bg-conflict-hover: #f6c7c3;
+    }
 
-    /* ===== Status bar (loading / error / done) ===== */
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 20px;
+      color: var(--c-text);
+      background: #fff;
+      margin: 0;
+    }
+    h2 { margin: 0 0 12px; }
+
+    /* ===== Status bar ===== */
     #status {
       display: none;
       align-items: center;
@@ -23,10 +39,10 @@
       border-radius: 8px;
       font-size: 14px;
     }
-    #status.show           { display: flex; }
-    #status.loading        { background: #e8f0fe; color: #1a73e8; }
-    #status.error          { background: #fce8e6; color: #d93025; }
-    #status.done           { background: #e6f4ea; color: #137333; }
+    #status.show     { display: flex; }
+    #status.loading  { background: #e8f0fe; color: var(--c-primary); }
+    #status.error    { background: #fce8e6; color: var(--c-error); }
+    #status.done     { background: #e6f4ea; color: var(--c-success); }
 
     .spinner {
       width: 14px; height: 14px;
@@ -41,7 +57,7 @@
     .status-retry {
       margin-left: auto;
       padding: 4px 14px;
-      background: #1a73e8;
+      background: var(--c-primary);
       color: #fff;
       border: none;
       border-radius: 4px;
@@ -52,10 +68,59 @@
     .status-retry:hover  { background: #1557b0; }
     .status-retry:active { background: #0d47a1; }
 
-    /* Skeleton ตอน loading — ให้ดูเหมือนมี content เร็ว ๆ */
-    #table.skeleton { opacity: 0.4; pointer-events: none; }
-  </style>
+    /* ===== Summary chips ===== */
+    #summary { margin: 12px 0; min-height: 28px; }
+    .chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #f1f3f4;
+      font-size: 13px;
+      color: var(--c-muted);
+      margin-right: 6px;
+      font-weight: 500;
+    }
+    .chip-warn { background: #fef7e0; color: #b06000; }
+    .chip-ok   { background: #e6f4ea; color: var(--c-success); }
 
+    /* ===== Table ===== */
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+    }
+    th {
+      background: #f1f3f4;
+      font-size: 12px;
+      color: var(--c-muted);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    tbody tr:nth-child(even) td { background: var(--bg-stripe); }
+    tbody tr:hover td           { background: var(--bg-hover); }
+
+    /* Conflict row highlight */
+    tbody tr.row-conflict td        { background: var(--bg-conflict) !important; }
+    tbody tr.row-conflict:hover td  { background: var(--bg-conflict-hover) !important; }
+
+    .col-marker { width: 28px; text-align: center; }
+    .conflict-badge {
+      display: inline-block;
+      color: var(--c-error);
+      font-size: 16px;
+      cursor: help;
+      line-height: 1;
+    }
+
+    /* Skeleton ตอน loading */
+    table.skeleton { opacity: 0.4; pointer-events: none; }
+  </style>
 </head>
 
 <body>
@@ -63,122 +128,242 @@
 <h2>📊 Queue Dashboard</h2>
 
 <div id="status" aria-live="polite"></div>
-<table border="1" id="table"></table>
+<div id="summary"></div>
+<table id="table"></table>
 
 <script>
+/* =========================================================================
+ *  ARCHITECTURE
+ *  ============
+ *    CONFIG       — endpoint, timeouts
+ *    State        — rows (centralized; ทุก row มี .conflict field จาก backend)
+ *    Utils        — escape, rowKey, fetchJSON
+ *    Api          — getConflicts (single endpoint — rows + conflict field)
+ *    Conflicts    — has(row) → row.conflict (backend = source of truth)
+ *    UI           — setStatus, setSummary, renderTable, setSkeleton
+ *    init()       — single fetch → state → render
+ *
+ *  DATA FLOW
+ *  =========
+ *    init()
+ *      └─→ Api.getConflicts()    ← single endpoint, returns rows w/ conflict field
+ *              ↓
+ *      State.rows = rows
+ *              ↓
+ *      UI.renderTable(rows)       ← Conflicts.has(r) reads r.conflict directly
+ *      UI.setSummary(rows, count)
+ * ========================================================================= */
 
-const URL = "https://script.google.com/macros/s/AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec";
 
-let conflicts = [];
+// ====================================================================
+//  CONFIG
+// ====================================================================
+const CONFIG = {
+  apiUrl: 'https://script.google.com/macros/s/AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec',
+  fetchTimeoutMs: 30000,
+  autoHideDoneMs: 2000,
+};
 
-// ====== Status helper ======
-function setStatus(text, kind) {
-  const el = document.getElementById('status');
-  if (!el) return;
 
-  // 'hidden' → ซ่อน status bar
-  if (kind === 'hidden') {
-    el.className = '';
-    el.innerHTML = '';
-    return;
-  }
+// ====================================================================
+//  STATE — single source of truth (frontend)
+// ====================================================================
+const State = {
+  rows: [],   // จาก getConflicts — แต่ละ row มี .conflict field โดยตรง
+};
 
-  // ปกติ: loading / error / done
-  el.className = 'show ' + (kind || 'loading');
-  const spinner = (kind === 'loading' || !kind) ? '<span class="spinner" aria-hidden="true"></span>' : '';
-  const retry   = (kind === 'error') ? '<button class="status-retry" type="button" onclick="init()">Retry</button>' : '';
-  el.innerHTML  = spinner + '<span>' + escapeText(text) + '</span>' + retry;
-}
 
-function escapeText(s) {
-  const d = document.createElement('div');
-  d.innerText = String(s == null ? '' : s);
-  return d.innerHTML;
-}
+// ====================================================================
+//  UTILS
+// ====================================================================
+const Utils = {
+  // XSS-safe text escape — ใช้ DOM API (browser handles ทุก edge case)
+  escapeHtml(s) {
+    const d = document.createElement('div');
+    d.innerText = String(s == null ? '' : s);
+    return d.innerHTML;
+  },
 
-// ====== Fetch with timeout ======
-async function fetchJSON(url, timeoutMs) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs || 30000);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Request timeout');
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+  // Unique signature ของ row — สำหรับ dedupe / debug / future use
+  // (Date + Start Time + คนไลฟ์ + ห้องสตู — กัน edge case "ลำดับเวลาเดียวกัน คนเดียวกัน คนละห้อง")
+  rowKey(r) {
+    if (!r) return '';
+    return [
+      r.Date,
+      r['Start Time'],
+      r['คนไลฟ์'],
+      r['ห้องสตู']
+    ].join('|');
+  },
 
-// ====== Data loaders ======
-async function loadConflicts() {
-  conflicts = await fetchJSON(URL + "?action=getConflicts");
-}
+  // Fetch + JSON + timeout — single utility ใช้ซ้ำ
+  async fetchJSON(url, timeoutMs) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || CONFIG.fetchTimeoutMs);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (err) {
+      if (err.name === 'AbortError') throw new Error('Request timeout');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+};
 
-function isConflict(row) {
-  return conflicts.some(c =>
-    c.a.Date === row.Date &&
-    c.a['Start Time'] === row['Start Time'] &&
-    c.a['คนไลฟ์'] === row['คนไลฟ์']
-  );
-}
 
-async function loadTable() {
-  const data = await fetchJSON(URL + "?action=getRows");
+// ====================================================================
+//  API — single endpoint (getConflicts returns rows + conflict field)
+// ====================================================================
+const Api = {
+  getConflicts() {
+    return Utils.fetchJSON(CONFIG.apiUrl + '?action=getConflicts');
+  },
+};
 
-  // Build HTML string ครั้งเดียว — เร็วกว่า += ใน loop หลายเท่า (ไม่ trigger reflow ทุก row)
-  const cells = [];
-  cells.push('<tr><th>Date</th><th>Start</th><th>End</th><th>Room</th><th>Streamer</th><th>Brand</th></tr>');
 
-  data.forEach(r => {
-    const red = isConflict(r);
-    const bg  = red ? ' style="background:#ffb3b3"' : '';
-    cells.push(
-      '<tr' + bg + '>' +
-        '<td>' + escapeText(r.Date)            + '</td>' +
-        '<td>' + escapeText(r['Start Time'])   + '</td>' +
-        '<td>' + escapeText(r['End Time'])     + '</td>' +
-        '<td>' + escapeText(r['ห้องสตู'])     + '</td>' +
-        '<td>' + escapeText(r['คนไลฟ์'])      + '</td>' +
-        '<td>' + escapeText(r.BRAND)           + '</td>' +
-      '</tr>'
+// ====================================================================
+//  CONFLICTS — backend is the source of truth
+//  ไม่มี match/lookup ฝั่ง frontend อีก — ใช้ field จาก API ตรง ๆ
+// ====================================================================
+const Conflicts = {
+  has(row) {
+    return !!(row && row.conflict === true);
+  },
+};
+
+
+// ====================================================================
+//  UI — pure render functions (รับ state เป็น argument, ไม่อ่าน global)
+// ====================================================================
+const UI = {
+  els: {
+    status:  document.getElementById('status'),
+    summary: document.getElementById('summary'),
+    table:   document.getElementById('table'),
+  },
+
+  // Status bar — loading / error / done / hidden
+  setStatus(text, kind) {
+    const el = this.els.status;
+    if (!el) return;
+
+    if (kind === 'hidden') {
+      el.className = '';
+      el.innerHTML = '';
+      return;
+    }
+
+    el.className = 'show ' + (kind || 'loading');
+    const spinner = (kind === 'loading' || !kind) ? '<span class="spinner" aria-hidden="true"></span>' : '';
+    const retry   = (kind === 'error') ? '<button class="status-retry" type="button" onclick="init()">Retry</button>' : '';
+    el.innerHTML  = spinner + '<span>' + Utils.escapeHtml(text) + '</span>' + retry;
+  },
+
+  // Summary chips — total + conflict count
+  setSummary(rows, conflictCount) {
+    const el = this.els.summary;
+    if (!el) return;
+    const total = (rows && rows.length) || 0;
+    const conflictChip = conflictCount > 0
+      ? '<span class="chip chip-warn">⚠ Conflicts: ' + conflictCount + '</span>'
+      : '<span class="chip chip-ok">✓ No conflicts</span>';
+    el.innerHTML =
+      '<span class="chip">Total: ' + total + '</span>' +
+      conflictChip;
+  },
+
+  // Render full table — single innerHTML write (no += loop)
+  renderTable(rows) {
+    const el = this.els.table;
+    if (!el) return;
+
+    if (!rows || rows.length === 0) {
+      el.innerHTML = '<tr><td>No data</td></tr>';
+      return;
+    }
+
+    const parts = [];
+
+    parts.push(
+      '<thead><tr>' +
+        '<th class="col-marker"></th>' +
+        '<th>Date</th>' +
+        '<th>Start</th>' +
+        '<th>End</th>' +
+        '<th>Room</th>' +
+        '<th>Streamer</th>' +
+        '<th>Brand</th>' +
+      '</tr></thead>'
     );
-  });
 
-  document.getElementById('table').innerHTML = cells.join('');
-  return data.length;
-}
+    parts.push('<tbody>');
+    rows.forEach(r => {
+      const conflict = Conflicts.has(r);
+      const rowClass = conflict ? ' class="row-conflict"' : '';
+      const marker   = conflict ? '<span class="conflict-badge" title="Queue conflict">⚠</span>' : '';
+      parts.push(
+        '<tr' + rowClass + '>' +
+          '<td class="col-marker">' + marker + '</td>' +
+          '<td>' + Utils.escapeHtml(r.Date)          + '</td>' +
+          '<td>' + Utils.escapeHtml(r['Start Time']) + '</td>' +
+          '<td>' + Utils.escapeHtml(r['End Time'])   + '</td>' +
+          '<td>' + Utils.escapeHtml(r['ห้องสตู'])    + '</td>' +
+          '<td>' + Utils.escapeHtml(r['คนไลฟ์'])     + '</td>' +
+          '<td>' + Utils.escapeHtml(r.BRAND)         + '</td>' +
+        '</tr>'
+      );
+    });
+    parts.push('</tbody>');
 
-// ====== Init flow with progress + error handling ======
+    el.innerHTML = parts.join('');
+  },
+
+  setSkeleton(on) {
+    if (this.els.table) this.els.table.classList.toggle('skeleton', !!on);
+  },
+};
+
+
+// ====================================================================
+//  CONTROLLER — init() orchestrates everything
+// ====================================================================
 async function init() {
-  const tableEl = document.getElementById('table');
-  if (tableEl) tableEl.classList.add('skeleton');
+  UI.setSkeleton(true);
+  UI.setStatus('Connecting to backend...', 'loading');
 
   try {
-    setStatus('Connecting to backend...', 'loading');
+    // Single endpoint — rows มี .conflict field มาแล้ว
+    const rows = await Api.getConflicts();
+    State.rows = Array.isArray(rows) ? rows : [];
 
-    // 🔥 โหลดพร้อมกัน
-    const [_, count] = await Promise.all([
-      loadConflicts(),
-      loadTable()
-    ]);
+    // Count conflicts via Conflicts.has() (= row.conflict === true)
+    const conflictCount = State.rows.reduce(
+      (n, r) => n + (Conflicts.has(r) ? 1 : 0),
+      0
+    );
 
-    if (tableEl) tableEl.classList.remove('skeleton');
+    // Render ทุก section ทีเดียว
+    UI.setSummary(State.rows, conflictCount);
+    UI.renderTable(State.rows);
+    UI.setSkeleton(false);
 
-    setStatus('Loaded ' + count + ' rows', 'done');
-    setTimeout(() => setStatus('', 'hidden'), 2000);
+    UI.setStatus('Loaded ' + State.rows.length + ' rows', 'done');
+    setTimeout(() => UI.setStatus('', 'hidden'), CONFIG.autoHideDoneMs);
 
   } catch (err) {
     console.error('[init]', err);
-    if (tableEl) tableEl.classList.remove('skeleton');
-    setStatus('Failed to load: ' + (err.message || err), 'error');
+    UI.setSkeleton(false);
+    UI.setStatus('Failed to load: ' + (err.message || err), 'error');
   }
 }
 
-init();
+// expose for retry button onclick
+window.init = init;
 
+init();
 </script>
 
 </body>
