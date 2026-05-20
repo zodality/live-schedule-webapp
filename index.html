@@ -1,170 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Live Schedule</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+  <title>Queue Dashboard</title>
 </head>
+
 <body>
-  <!-- Topbar -->
-  <div class="topbar">
-    <h1>Live Schedule</h1>
-    <span class="meta" id="meta"></span>
-    <div class="spacer"></div>
-    <span class="user-info" id="userInfo" style="display:none"></span>
-    <button class="btn btn-primary" id="addBtn">+ Add row</button>
-    <button class="btn" id="reloadBtn">Reload</button>
-  </div>
 
-  <!-- Filter card -->
-  <div class="card card-filter">
-    <div class="filterbar">
-      <div class="filter-group">
-        <label>Date:</label>
-        <input type="text" id="dateFrom" class="date-input" placeholder="dd/MM/yyyy" readonly>
-        <span style="color:#5f6368">→</span>
-        <input type="text" id="dateTo" class="date-input" placeholder="dd/MM/yyyy" readonly>
-      </div>
-      <div class="filter-group ms" id="msStreamer">
-        <button class="btn ms-btn" type="button">
-          <span>คนไลฟ์</span>
-          <span><span class="ms-count" style="display:none">0</span><span class="caret">&#x25BE;</span></span>
-        </button>
-        <div class="ms-panel">
-          <input type="text" class="ms-search" placeholder="ค้นหาคนไลฟ์...">
-          <div class="ms-actions">
-            <button type="button" class="btn-link ms-all">All</button>
-            <button type="button" class="btn-link ms-none">None</button>
-          </div>
-          <div class="ms-list"></div>
-        </div>
-      </div>
-      <div class="filter-group ms" id="msBrand">
-        <button class="btn ms-btn" type="button">
-          <span>Brand</span>
-          <span><span class="ms-count" style="display:none">0</span><span class="caret">&#x25BE;</span></span>
-        </button>
-        <div class="ms-panel">
-          <input type="text" class="ms-search" placeholder="Search brand...">
-          <div class="ms-actions">
-            <button type="button" class="btn-link ms-all">All</button>
-            <button type="button" class="btn-link ms-none">None</button>
-          </div>
-          <div class="ms-list"></div>
-        </div>
-      </div>
-      <div class="filter-group">
-        <label>Source:</label>
-        <select id="sourceFilter">
-          <option value="ALL">All</option>
-          <option value="STUDIO">STUDIO</option>
-          <option value="WFH">WFH</option>
-        </select>
-      </div>
-      <button class="btn-link" id="clearFilters">Clear filters</button>
-    </div>
-  </div>
+<h2>📊 Queue Dashboard</h2>
 
-  <!-- Table card -->
-  <div class="card card-table">
-    <div id="status" class="status">Loading...</div>
-    <div class="table-wrap" id="tableWrap" style="display:none">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-date">Date</th>
-            <th class="col-start">Start</th>
-            <th class="col-end">End</th>
-            <th class="col-hours">Hours</th>
-            <th class="col-studio">ห้องสตู</th>
-            <th class="col-streamer">คนไลฟ์</th>
-            <th class="col-brand">Brand</th>
-            <th class="col-platform">Platform</th>
-            <th class="col-source">Source</th>
-            <th class="col-source-raw">SOURCE</th>
-            <th class="col-tab">TAB</th>
-            <th class="col-action"></th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-    <div class="paginationbar" id="paginationBar">
-      <span class="pg-info" id="pgInfo"></span>
-      <div class="pg-nav" id="pgNav"></div>
-      <div class="pg-size">
-        <span>Per page:</span>
-        <select id="pageSizeSelect">
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="50" selected>50</option>
-          <option value="100">100</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-    </div>
-  </div>
+<table border="1" id="table"></table>
 
-  <!-- Dashboard card -->
-  <section class="card card-dashboard">
-    <div class="card-header">
-      <h2 class="card-title">Dashboard</h2>
-    </div>
-    <div class="dashboard-stats">
-      <div class="stat">
-        <div class="stat-title">Total Hours</div>
-        <div class="stat-value" id="totalHours">0</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Studio</div>
-        <div class="stat-value" id="studioHours">0</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">WFH</div>
-        <div class="stat-value" id="wfhHours">0</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Top Brand</div>
-        <div class="stat-value" id="topBrand">-</div>
-      </div>
-    </div>
-  </section>
-  <div class="card">
-  <h3>Top Brands</h3>
-  <div id="brandRanking"></div>
-</div>
+<script>
 
-  <!-- Add Row Modal -->
-  <div class="modal-bg" id="modalBg">
-    <div class="modal">
-      <h2 id="modalTitle">Add new row</h2>
-      <div class="field">
-        <label>Date *</label>
-        <input id="addDate" type="text" placeholder="dd/MM/yyyy" readonly>
-      </div>
-      <div class="field"><label>Start</label><input id="addStart" type="text" placeholder="HH:MM" readonly></div>
-      <div class="field"><label>End</label><input id="addEnd" type="text" placeholder="HH:MM" readonly></div>
-      <div class="field"><label>Hours</label><input id="addHours" type="text" readonly></div>
-      <div class="field"><label>ห้องสตู</label><input id="addStudio" type="text"></div>
-      <div class="field"><label>คนไลฟ์</label><input id="addStreamer" type="text"></div>
-      <div class="field"><label>Brand</label><input id="addBrand" type="text"></div>
-      <div class="field"><label>Platform</label><input id="addPlatform" type="text"></div>
-      <div class="err" id="addErr"></div>
-      <div class="actions">
-        <button class="btn" id="addCancel">Cancel</button>
-        <button class="btn btn-primary" id="addSave">Save</button>
-      </div>
-    </div>
-  </div>
+const URL = "const URL = "https://script.google.com/macros/s/AKfycbzWOV0oIy2p1tsBhSQNtABhBWKQ1o3TS09JTX7p1IBNCoLqoQ9SptE6jZ8joN0zRPAi/exec";
 
-  <div class="toast" id="toast"></div>
+let conflicts = [];
 
-  <!-- JS includes -->
-  <script src="state.js"></script>
-<script src="utils.js"></script>
-<script src="ui.js"></script>
-<script src="app.js"></script>
+async function loadConflicts(){
+  const res = await fetch(URL+"?action=getConflicts");
+  conflicts = await res.json();
+}
+
+function isConflict(row){
+  return conflicts.some(c =>
+    c.a.Date === row.Date &&
+    c.a['Start Time'] === row['Start Time'] &&
+    c.a['คนไลฟ์'] === row['คนไลฟ์']
+  );
+}
+
+async function loadTable(){
+  const res = await fetch(URL+"?action=getRows");
+  const data = await res.json();
+
+  const table = document.getElementById('table');
+
+  table.innerHTML = `
+    <tr>
+      <th>Date</th>
+      <th>Start</th>
+      <th>End</th>
+      <th>Room</th>
+      <th>Streamer</th>
+      <th>Brand</th>
+    </tr>
+  `;
+
+  data.forEach(r=>{
+    const red = isConflict(r);
+
+    table.innerHTML += `
+      <tr style="background:${red?'#ffb3b3':''}">
+        <td>${r.Date}</td>
+        <td>${r['Start Time']}</td>
+        <td>${r['End Time']}</td>
+        <td>${r['ห้องสตู']}</td>
+        <td>${r['คนไลฟ์']}</td>
+        <td>${r.BRAND}</td>
+      </tr>
+    `;
+  });
+}
+
+async function init(){
+  await loadConflicts();
+  await loadTable();
+}
+
+init();
+
+</script>
+
 </body>
 </html>
