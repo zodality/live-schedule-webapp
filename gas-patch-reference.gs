@@ -102,9 +102,11 @@ const FLAT_HEADER_TOKENS = [
 ];
 
 // header tokens สำหรับ BLOCK format (header row ภายในแต่ละ brand block)
+// + alias headers ที่ใช้ใน WFH_09 (Time / Name / Hr.) — header detector + alias mapping ด้านล่าง
 const BLOCK_HEADER_TOKENS = [
   'Start', 'End', 'Hours', 'Time', 'Date',
-  'คนไลฟ์', 'Streamer', 'Platform', 'ห้องสตู'
+  'คนไลฟ์', 'Streamer', 'Platform', 'ห้องสตู',
+  'Name', 'Hr.', 'Hr'
 ];
 
 // row content ที่ควร skip (พัก/บรีฟ/หยุด)
@@ -239,10 +241,13 @@ function parseBlockFormat_(values, sourceKey, tabName) {
     });
 
     // Normalize alt header names → canonical
-    // (block sheet อาจใช้ "Start"/"End" แทน "Start Time"/"End Time")
-    if (rowObj.Start && !rowObj['Start Time']) rowObj['Start Time'] = rowObj.Start;
-    if (rowObj.End   && !rowObj['End Time'])   rowObj['End Time']   = rowObj.End;
-    if (rowObj.Streamer && !rowObj['คนไลฟ์']) rowObj['คนไลฟ์']  = rowObj.Streamer;
+    // (block sheet ใช้ header variant: Start/End vs Start Time/End Time, Name vs คนไลฟ์, Hr. vs Hours)
+    if (rowObj.Start    && !rowObj['Start Time']) rowObj['Start Time'] = rowObj.Start;
+    if (rowObj.End      && !rowObj['End Time'])   rowObj['End Time']   = rowObj.End;
+    if (rowObj.Streamer && !rowObj['คนไลฟ์'])    rowObj['คนไลฟ์']     = rowObj.Streamer;
+    if (rowObj.Name     && !rowObj['คนไลฟ์'])    rowObj['คนไลฟ์']     = rowObj.Name;        // WFH_09: Name → คนไลฟ์
+    if (rowObj['Hr.']   && !rowObj.Hours)         rowObj.Hours          = rowObj['Hr.'];     // WFH_09: Hr. → Hours
+    if (rowObj.Hr       && !rowObj.Hours)         rowObj.Hours          = rowObj.Hr;         // กัน variant ไม่มีจุด
 
     // Skip row ที่ไม่มี data หลัก (start/end/streamer ว่างหมด)
     const hasStart    = rowObj['Start Time'] != null && rowObj['Start Time'] !== '';
